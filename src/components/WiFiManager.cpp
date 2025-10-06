@@ -5,7 +5,7 @@
 
 #include "WiFiManager.h"
 
-WiFiManager::WiFiManager(IWiFiAdapter* wifi, IFileSystem* fs, DualLogger* log, TimeoutManager* timeout)
+WiFiManager::WiFiManager(IWiFiAdapter* wifi, IFileSystem* fs, WebSocketLogger* log, TimeoutManager* timeout)
     : wifiAdapter(wifi),
       fileSystem(fs),
       logger(log),

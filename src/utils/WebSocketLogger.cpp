@@ -4,6 +4,7 @@
  */
 
 #include "WebSocketLogger.h"
+#include "LogEnums.h"
 
 WebSocketLogger::WebSocketLogger()
     : ws(nullptr), isInitialized(false), messageCount(0) {
@@ -66,14 +67,14 @@ String WebSocketLogger::buildLogMessage(LogLevel level, const char* component, c
 
     // Level
     message += "\"level\":\"";
-    message += logLevelToString(level);
+    message += ::logLevelToString(level);
     message += "\",";
-
+    
     // Component
     message += "\"component\":\"";
     message += component;
     message += "\",";
-
+    
     // Event
     message += "\"event\":\"";
     message += event;
@@ -90,17 +91,6 @@ String WebSocketLogger::buildLogMessage(LogLevel level, const char* component, c
     return message;
 }
 
-const char* WebSocketLogger::logLevelToString(LogLevel level) const {
-    switch (level) {
-        case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO:  return "INFO";
-        case LogLevel::WARN:  return "WARN";
-        case LogLevel::ERROR: return "ERROR";
-        case LogLevel::FATAL: return "FATAL";
-        default:              return "UNKNOWN";
-    }
-}
-
 void WebSocketLogger::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                                         AwsEventType type, void* arg, uint8_t* data, size_t len) {
     switch (type) {
@@ -110,7 +100,10 @@ void WebSocketLogger::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCli
                          client->id(), client->remoteIP().toString().c_str());
 
             // Send welcome message
-            client->text("{\"status\":\"connected\",\"timestamp\":" + String(millis()) + "}");
+            {
+                String welcome = "{\"status\":\"connected\",\"timestamp\":\"" + String(millis()) + "\"}";
+                client->text(welcome);
+            }
             break;
 
         case WS_EVT_DISCONNECT:
@@ -131,4 +124,96 @@ void WebSocketLogger::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCli
             Serial.printf("WebSocket client #%u error\n", client->id());
             break;
     }
+}
+
+void WebSocketLogger::logConnectionEvent(ConnectionEvent event, const String& ssid, int attempt, int timeout) {
+    // Send to WebSocket if has clients
+    if (hasClients()) {
+        // Determine log level based on event
+        LogLevel level = LogLevel::INFO;
+        switch (event) {
+            case ConnectionEvent::CONNECTION_FAILED:
+            case ConnectionEvent::CONNECTION_LOST:
+                level = LogLevel::WARN;
+                break;
+            case ConnectionEvent::CONNECTION_SUCCESS:
+                level = LogLevel::INFO;
+                break;
+            default:
+                level = LogLevel::INFO;
+                break;
+        }
+
+        // Build data JSON
+        String data = "{\"ssid\":\"" + ssid + "\"";
+
+        if (attempt > 0) {
+            data += ",\"attempt\":" + String(attempt);
+        }
+
+        if (timeout > 0) {
+            data += ",\"timeout_seconds\":" + String(timeout);
+        }
+
+        data += "}";
+
+        // Get event string
+        const char* eventStr = ::connectionEventToString(event);
+
+        broadcastLog(level, "WiFiManager", eventStr, data);
+    }
+}
+
+void WebSocketLogger::logConfigEvent(ConnectionEvent event, bool success, int networkCount, const String& error) {
+    // Send to WebSocket if has clients
+    if (hasClients()) {
+        // Build data JSON
+        String data = "{\"success\":";
+        data += String(success ? "true" : "false");
+
+        if (networkCount > 0) {
+            data += ",\"networks_count\":" + String(networkCount);
+        }
+
+        if (error.length() > 0) {
+            data += ",\"error\":\"" + error + "\"";
+        }
+
+        data += "}";
+
+        // Determine log level
+        LogLevel level = success ? LogLevel::INFO : LogLevel::ERROR;
+
+        // Get event string
+        const char* eventStr = ::connectionEventToString(event);
+
+        broadcastLog(level, "WiFiManager", eventStr, data);
+    }
+}
+
+void WebSocketLogger::logRebootEvent(int delaySeconds, const String& reason) {
+    // Send to WebSocket if has clients
+    if (hasClients()) {
+        // Build data JSON
+        String data = "{\"delay_seconds\":" + String(delaySeconds);
+
+        if (reason.length() > 0) {
+            data += ",\"reason\":\"" + reason + "\"";
+        }
+
+        data += "}";
+
+        // Map to reboot scheduled event
+        const char* eventStr = ::connectionEventToString(ConnectionEvent::REBOOT_SCHEDULED);
+
+        broadcastLog(LogLevel::WARN, "WiFiManager", eventStr, data);
+    }
+}
+
+uint32_t WebSocketLogger::getWebSocketClients() const {
+    return getClientCount();
+}
+
+bool WebSocketLogger::hasWebSocketClients() const {
+    return hasClients();
 }

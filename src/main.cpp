@@ -7,7 +7,7 @@
  * - LittleFS persistent configuration storage
  * - HTTP API for configuration management
  * - ReactESP event-driven architecture
- * - UDP broadcast logging for debugging
+ * - WebSocket logging for debugging
  *
  * Hardware: ESP32 (SH-ESP32 board)
  */
@@ -29,7 +29,7 @@
 #include "components/ConfigWebServer.h"
 
 // Utilities
-#include "utils/DualLogger.h"
+#include "utils/WebSocketLogger.h"
 #include "utils/TimeoutManager.h"
 
 // Configuration
@@ -48,7 +48,7 @@ ESP32WiFiAdapter* wifiAdapter = nullptr;
 LittleFSAdapter* fileSystem = nullptr;
 
 // Core components
-DualLogger logger;
+WebSocketLogger logger;
 TimeoutManager timeoutManager;
 WiFiManager* wifiManager = nullptr;
 ConfigWebServer* webServer = nullptr;
@@ -74,8 +74,7 @@ void onWiFiConnected() {
     // Update connection state
     wifiManager->handleConnectionSuccess(connectionState, ssid);
 
-    // Initialize UDP logger now that WiFi is connected
-    logger.begin();
+    // Log connection success
     logger.logConnectionEvent(ConnectionEvent::CONNECTION_SUCCESS, ssid);
 
     // Start web server if not already running
@@ -85,7 +84,7 @@ void onWiFiConnected() {
         webServer->begin();
 
         // Attach WebSocket logger to web server for reliable logging
-        logger.attachWebSocket(webServer->getServer(), "/logs");
+        logger.begin(webServer->getServer(), "/logs");
 
         logger.broadcastLog(LogLevel::INFO, "WebServer", "STARTED",
             String("{\"ip\":\"") + ip + "\",\"port\":80}");

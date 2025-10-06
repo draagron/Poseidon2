@@ -19,7 +19,7 @@
 #include "WiFiConnectionState.h"
 #include "ConfigParser.h"
 #include "ConnectionStateMachine.h"
-#include "../utils/DualLogger.h"
+#include "../utils/WebSocketLogger.h"
 #include "../utils/TimeoutManager.h"
 #include "../config.h"
 
@@ -35,7 +35,7 @@ private:
     IFileSystem* fileSystem;
     ConfigParser parser;
     ConnectionStateMachine stateMachine;
-    DualLogger* logger;
+    WebSocketLogger* logger;
     TimeoutManager* timeoutManager;
 
 public:
@@ -46,7 +46,7 @@ public:
      * @param log Dual logger (optional, can be null for testing)
      * @param timeout Timeout manager (optional, can be null for testing)
      */
-    WiFiManager(IWiFiAdapter* wifi, IFileSystem* fs, DualLogger* log = nullptr, TimeoutManager* timeout = nullptr);
+    WiFiManager(IWiFiAdapter* wifi, IFileSystem* fs, WebSocketLogger* log = nullptr, TimeoutManager* timeout = nullptr);
 
     /**
      * @brief Load WiFi configuration from persistent storage

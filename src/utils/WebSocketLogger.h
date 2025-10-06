@@ -2,14 +2,14 @@
  * @file WebSocketLogger.h
  * @brief WebSocket-based logger for reliable network debugging
  *
- * Provides WebSocket logging as an alternative to UDP broadcast.
+ * Provides WebSocket logging as the primary logging mechanism.
  * WebSocket uses TCP, providing reliable, ordered delivery of log messages.
  *
  * Usage:
  * @code
- * WebSocketLogger wsLogger;
- * wsLogger.begin(webServer);
- * wsLogger.broadcastLog(LogLevel::INFO, "Component", "EVENT", "{\"data\":1}");
+ * WebSocketLogger logger;
+ * logger.begin(webServer);
+ * logger.broadcastLog(LogLevel::INFO, "Component", "EVENT", "{\"data\":1}");
  * @endcode
  */
 
@@ -18,13 +18,13 @@
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
-#include "UDPLogger.h"  // Reuse LogLevel enum
+#include "LogEnums.h"
 
 /**
  * @brief WebSocket logger class
  *
  * Broadcasts log messages to all connected WebSocket clients.
- * Provides reliable TCP-based delivery vs unreliable UDP.
+ * Provides reliable TCP-based delivery.
  */
 class WebSocketLogger {
 private:
@@ -56,10 +56,31 @@ public:
     void broadcastLog(LogLevel level, const char* component, const char* event, const String& data = "");
 
     /**
+     * @brief Log WiFi connection event
+     */
+    void logConnectionEvent(ConnectionEvent event, const String& ssid, int attempt = 0, int timeout = 0);
+
+    /**
+     * @brief Log config file event
+     */
+    void logConfigEvent(ConnectionEvent event, bool success, int networkCount = 0, const String& error = "");
+
+    /**
+     * @brief Log reboot event
+     */
+    void logRebootEvent(int delaySeconds, const String& reason);
+
+    /**
      * @brief Get number of connected WebSocket clients
      * @return Number of active connections
      */
     uint32_t getClientCount() const;
+
+    /**
+     * @brief Get number of WebSocket clients connected
+     * @return Client count
+     */
+    uint32_t getWebSocketClients() const;
 
     /**
      * @brief Get total messages sent
@@ -73,6 +94,11 @@ public:
      */
     bool hasClients() const;
 
+    /**
+     * @brief Check if WebSocket has clients
+     */
+    bool hasWebSocketClients() const;
+
 private:
     /**
      * @brief Build JSON log message
@@ -83,13 +109,6 @@ private:
      * @return JSON formatted log message
      */
     String buildLogMessage(LogLevel level, const char* component, const char* event, const String& data) const;
-
-    /**
-     * @brief Convert log level to string
-     * @param level Log level
-     * @return Level as string
-     */
-    const char* logLevelToString(LogLevel level) const;
 
     /**
      * @brief Handle WebSocket events (connect/disconnect/data)
