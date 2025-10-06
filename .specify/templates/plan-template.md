@@ -47,7 +47,46 @@
 ## Constitution Check
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**Hardware Abstraction (Principle I)**:
+- [ ] All hardware interactions use HAL interfaces
+- [ ] Mock implementations provided for testing
+- [ ] Business logic separable from hardware I/O
+
+**Resource Management (Principle II)**:
+- [ ] Static allocation preferred; heap usage justified
+- [ ] Stack usage estimated and within 8KB per task
+- [ ] Flash usage impact documented
+- [ ] String literals use F() macro or PROGMEM
+
+**QA Review Process (Principle III - NON-NEGOTIABLE)**:
+- [ ] QA subagent review planned for all code changes
+- [ ] Hardware-dependent tests minimized
+- [ ] Critical paths flagged for human review
+
+**Modular Design (Principle IV)**:
+- [ ] Components have single responsibility
+- [ ] Dependency injection used for hardware dependencies
+- [ ] Public interfaces documented
+
+**Network Debugging (Principle V)**:
+- [ ] UDP broadcast logging implemented
+- [ ] Log levels defined (DEBUG/INFO/WARN/ERROR/FATAL)
+- [ ] Flash fallback for critical errors
+
+**Always-On Operation (Principle VI)**:
+- [ ] WiFi always-on requirement met
+- [ ] No deep sleep/light sleep modes used
+- [ ] Designed for 24/7 operation
+
+**Fail-Safe Operation (Principle VII)**:
+- [ ] Watchdog timer enabled (production)
+- [ ] Safe mode/recovery mode implemented
+- [ ] Graceful degradation for failures
+
+**Technology Stack Compliance**:
+- [ ] Using approved libraries (NMEA0183, NMEA2000, ReactESP, ESPAsyncWebServer, Adafruit_SSD1306)
+- [ ] File organization follows src/ structure (hal/, components/, utils/, mocks/)
+- [ ] Conventional commits format
 
 ## Project Structure
 
@@ -216,4 +255,4 @@ directories captured above]
 - [ ] Complexity deviations documented
 
 ---
-*Based on Constitution v2.1.1 - See `/memory/constitution.md`*
+*Based on Constitution v1.0.0 - See `.specify/memory/constitution.md`*
