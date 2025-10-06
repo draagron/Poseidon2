@@ -74,6 +74,10 @@ void onWiFiConnected() {
     // Update connection state
     wifiManager->handleConnectionSuccess(connectionState, ssid);
 
+    // Print IP address to Serial
+    Serial.print(F("WiFi connected! IP address: "));
+    Serial.println(ip);
+
     // Log connection success
     logger.logConnectionEvent(ConnectionEvent::CONNECTION_SUCCESS, ssid);
 
