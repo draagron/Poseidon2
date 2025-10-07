@@ -34,7 +34,7 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
 
 ### System Features
 - ✅ **Always-On Operation**: No sleep modes, 24/7 uptime
-- ✅ **UDP Logging**: Network-based debugging (port 4444)
+- ✅ **WebSocket Logging**: Reliable network-based debugging
 - ✅ **Hardware Abstraction**: Testable via mocks (HAL pattern)
 - ✅ **ReactESP**: Event-driven architecture for responsive operation
 - 🚧 **OLED Display**: Real-time status and diagnostics
@@ -272,7 +272,7 @@ Poseidon2/
 │   │   ├── ConnectionStateMachine.cpp # State: DISCONNECTED→CONNECTING→CONNECTED
 │   │   └── ConfigWebServer.cpp     # HTTP API endpoints
 │   ├── utils/                      # Utility functions
-│   │   ├── UDPLogger.cpp          # UDP broadcast logging
+│   │   ├── WebSocketLogger.cpp          # WebSocket logging
 │   │   └── TimeoutManager.cpp     # ReactESP timeout tracking
 │   └── mocks/                      # Mock implementations for testing
 ├── test/                           # PlatformIO tests
@@ -326,17 +326,25 @@ pio test -e esp32dev_test -f test_wifi_connection
 
 See [`test/test_wifi_connection/README.md`](test/test_wifi_connection/README.md) for hardware test setup.
 
-### UDP Debug Logging
+### WebSocket Debug Logging
 
-All WiFi events broadcast to UDP port 4444 (JSON format):
+All WiFi and system events are logged via WebSocket for reliable debugging:
 
 ```bash
-# Listen for debug logs (macOS/Linux)
-nc -ul 4444
+# Connect to WebSocket logs (requires Python 3 + websockets library)
+pip3 install websockets
+python3 src/helpers/ws_logger.py <ESP32_IP>
 
-# Or use socat
-socat UDP-LISTEN:4444,reuseaddr,fork STDOUT
+# With log filtering
+python3 src/helpers/ws_logger.py <ESP32_IP> --filter WARN
+
+# With auto-reconnect
+python3 src/helpers/ws_logger.py <ESP32_IP> --reconnect
 ```
+
+**WebSocket Endpoint**: `ws://<device-ip>/logs`
+**Protocol**: TCP-based (reliable delivery, no packet loss)
+**Client**: Python script at `src/helpers/ws_logger.py`
 
 **Example Log Output**:
 ```json
@@ -355,7 +363,7 @@ socat UDP-LISTEN:4444,reuseaddr,fork STDOUT
 2. Check SSID and password are correct
 3. Ensure network is 2.4 GHz (ESP32 classic doesn't support 5 GHz)
 4. Verify device is within WiFi range
-5. Check UDP logs for detailed error messages
+5. Monitor WebSocket logs for detailed error messages: `python3 src/helpers/ws_logger.py <ip>`
 
 ### Configuration Upload Fails (400 Error)
 
@@ -372,13 +380,16 @@ socat UDP-LISTEN:4444,reuseaddr,fork STDOUT
 
 **Expected Behavior**: Device reboots 5 seconds after successful config upload to apply new settings.
 
-### UDP Logs Not Received
+### WebSocket Logs Not Received
+
+**Cause**: Network configuration, firewall, or WebSocket connection issues
 
 **Solutions**:
 1. Verify device and computer on same network segment
-2. Check firewall allows UDP port 4444
-3. Use correct broadcast address (255.255.255.255 or subnet broadcast)
-4. Ensure device has WiFi connection (logs buffer until connected)
+2. Check firewall allows HTTP port 80 (WebSocket upgrade)
+3. Ensure device has WiFi connection (logs buffer until connected)
+4. Verify Python websockets library installed: `pip3 install websockets`
+5. Check device IP address is correct
 
 ### LittleFS Mount Failed
 

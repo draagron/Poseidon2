@@ -73,11 +73,12 @@ SD Card: GPIO 15       |  LED: GPIO 2
 
 ### Network-Based Debugging - Serial Ports Reserved
 Serial ports are used for device communication (NMEA 0183), NOT debugging:
-- Use UDP broadcast logging for debug output (port 4444)
+- Use WebSocket logging for reliable debug output (ws://<device-ip>/logs)
 - Log levels: DEBUG, INFO, WARN, ERROR, FATAL
 - Include timestamps (millis() or RTC)
 - Production builds: only ERROR/FATAL levels
-- Fallback: Store critical errors to flash (SPIFFS/LittleFS) if network unavailable
+- TCP-based protocol ensures no packet loss
+- Fallback: Store critical errors to flash (SPIFFS/LittleFS) if WebSocket unavailable
 
 ### Always-On Operation
 - WiFi MUST remain always-on (no power management)
@@ -265,7 +266,7 @@ src/
 
 **Error Handling**:
 - Return codes/result types for operations that can fail
-- No silent failures - all errors logged via UDP
+- No silent failures - all errors logged via WebSocket
 - Critical errors trigger safe mode or controlled restart
 - User-facing error messages must be actionable
 
@@ -288,7 +289,7 @@ src/
 2. Resource Management (static allocation, stack limits, F() macros?)
 3. QA Review Process (review planned?)
 4. Modular Design (single responsibility, dependency injection?)
-5. Network Debugging (UDP logging implemented?)
+5. Network Debugging (WebSocket logging implemented?)
 6. Always-On Operation (no sleep modes?)
 7. Fail-Safe Operation (watchdog, safe mode, graceful degradation?)
 
@@ -301,7 +302,7 @@ The reference implementation (`examples/poseidongw/`) demonstrates the required 
 - Use ReactESP event loops for all periodic tasks
 - No blocking delays in main loop
 - Register callbacks for NMEA message handlers
-- UDP logging via `remotelog()` function (see main.cpp:86-95)
+- WebSocket logging via `WebSocketLogger` class (see src/utils/WebSocketLogger.h)
 
 ### NMEA 2000 Message Handling
 Follow the pattern in reference implementation:
@@ -319,7 +320,7 @@ Reference: `examples/poseidongw/src/NMEA0183Handlers.cpp`
 ## Build Configurations
 
 **Development**:
-- UDP debug logging enabled (verbose)
+- WebSocket debug logging enabled (verbose)
 - Assertions enabled
 - All log levels active
 
@@ -396,7 +397,7 @@ DISCONNECTED → CONNECTING → CONNECTED
 2. Verify SSID and password are correct
 3. Ensure at least one network is available and in range
 4. Check network is 2.4 GHz (ESP32 classic doesn't support 5 GHz)
-5. Monitor UDP logs (port 4444) for detailed error messages
+5. Monitor WebSocket logs for detailed error messages: `python3 src/helpers/ws_logger.py <ip>`
 
 #### Configuration Upload Returns 400 Error
 **Cause**: Validation failure
@@ -414,7 +415,7 @@ DISCONNECTED → CONNECTING → CONNECTED
 **Cause**: WiFi disconnect event not triggering retry
 
 **Debug Steps**:
-1. Check UDP logs for `CONNECTION_LOST` event
+1. Check WebSocket logs for `CONNECTION_LOST` event
 2. Verify `handleDisconnect()` is registered as WiFi event callback
 3. Confirm ReactESP event loop is running (`app.tick()` in main loop)
 4. Check `currentNetworkIndex` hasn't changed (should stay same for retry)
@@ -430,19 +431,20 @@ DISCONNECTED → CONNECTING → CONNECTED
 1. Check `setup()` function doesn't block on WiFi connection
 2. `WiFiManager::connect()` returns immediately (async operation)
 3. ReactESP event loops registered before WiFi attempts
-4. UDP logger, OLED display, NMEA handlers init before WiFi
+4. WebSocket logger, OLED display, NMEA handlers init before WiFi
 
 **Debug**: Monitor serial output for service startup timestamps
 
-#### UDP Logs Not Received
-**Cause**: Network configuration or firewall
+#### WebSocket Logs Not Received
+**Cause**: Network configuration or WebSocket connection failure
 
 **Solutions**:
-1. Verify device and listener on same network segment
-2. Use broadcast address (255.255.255.255)
-3. Check firewall allows UDP port 4444 inbound
-4. Listener command: `nc -ul 4444` (macOS/Linux)
-5. Logs buffer until WiFi connected - wait for connection
+1. Verify device and computer on same network
+2. Check firewall allows HTTP/WebSocket port 80
+3. Check Python websockets library: `pip3 install websockets`
+4. Verify device IP address
+5. Use `python3 src/helpers/ws_logger.py <ip> --reconnect` for auto-reconnect
+6. Logs buffer until WiFi connected - wait for connection
 
 #### Flash Filesystem Errors
 **Cause**: LittleFS corruption or not formatted
@@ -506,12 +508,15 @@ WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
 });
 ```
 
-**UDP Logging**:
+**WebSocket Logging**:
 ```cpp
-// All logging uses F() macro for flash storage
-logger->broadcastLog(LogLevel::INFO, F("WiFiManager"), F("CONNECTION_ATTEMPT"),
+// All logging uses WebSocketLogger for reliable delivery
+logger.broadcastLog(LogLevel::INFO, F("WiFiManager"), F("CONNECTION_ATTEMPT"),
     String("{\"ssid\":\"") + ssid + "\",\"timeout\":30}");
 ```
+- Endpoint: ws://<device-ip>/logs
+- Client: python3 src/helpers/ws_logger.py <ip>
+- Protocol: TCP-based WebSocket (no packet loss)
 
 **HAL Abstraction** (for testability):
 ```cpp
@@ -912,7 +917,7 @@ pio test -e native -f test_*_units
 3. Check diagnostic counters: `boatData->getDiagnostics().rejectionCount`
 
 **Calculation overruns**:
-1. Monitor UDP logs for "OVERRUN" warnings
+1. Monitor WebSocket logs for "OVERRUN" warnings: `python3 src/helpers/ws_logger.py <ip> --filter WARN`
 2. Check `diagnostics.calculationOverruns` counter
 3. Expected duration: <50ms typical, <200ms max
 
