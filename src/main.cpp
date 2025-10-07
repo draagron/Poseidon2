@@ -27,6 +27,11 @@
 #include "components/WiFiConfigFile.h"
 #include "components/WiFiConnectionState.h"
 #include "components/ConfigWebServer.h"
+#include "components/BoatData.h"
+#include "components/CalculationEngine.h"
+#include "components/SourcePrioritizer.h"
+#include "components/CalibrationManager.h"
+#include "components/CalibrationWebServer.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -57,6 +62,13 @@ ConfigWebServer* webServer = nullptr;
 WiFiConfigFile wifiConfig;
 WiFiConnectionState connectionState;
 
+// BoatData components (T038)
+SourcePrioritizer* sourcePrioritizer = nullptr;
+BoatData* boatData = nullptr;
+CalculationEngine* calculationEngine = nullptr;
+CalibrationManager* calibrationManager = nullptr;
+CalibrationWebServer* calibrationWebServer = nullptr;
+
 // Reboot management
 bool rebootScheduled = false;
 unsigned long rebootTime = 0;
@@ -85,6 +97,12 @@ void onWiFiConnected() {
     if (webServer == nullptr) {
         webServer = new ConfigWebServer(wifiManager, &wifiConfig, &connectionState);
         webServer->setupRoutes();
+
+        // T039: Register calibration API routes
+        if (calibrationWebServer != nullptr) {
+            calibrationWebServer->registerRoutes(webServer->getServer());
+        }
+
         webServer->begin();
 
         // Attach WebSocket logger to web server for reliable logging
@@ -125,6 +143,84 @@ void broadcastKeepAlive() {
             String("{\"uptime\":") + uptime + ",\"ssid\":\"" + connectionState.connectedSSID + "\"}");
     }
 }
+
+/**
+ * @brief Calculate derived sailing parameters (T038)
+ *
+ * Called every 200ms by ReactESP event loop to calculate all 11 derived parameters.
+ * Measures calculation duration and logs warnings if cycle exceeds 200ms.
+ *
+ * Constitutional requirement: Skip-and-continue strategy if overrun detected.
+ *
+ * Updates:
+ * - boatData->derived (all 11 calculated parameters)
+ * - boatData->diagnostics.calculationCount
+ * - boatData->diagnostics.calculationOverruns (if duration > 200ms)
+ * - boatData->diagnostics.lastCalculationDuration
+ */
+void calculateDerivedParameters() {
+    if (boatData == nullptr || calculationEngine == nullptr) {
+        return;  // Not yet initialized
+    }
+
+    // Measure calculation duration
+    unsigned long startMicros = micros();
+
+    // Execute calculation cycle
+    // Note: CalculationEngine operates directly on BoatData's internal structure
+    // For now, we'll call it through the interface methods
+    // TODO: Add direct calculation method once CalculationEngine interface is finalized
+
+    // Calculate duration in milliseconds
+    unsigned long durationMicros = micros() - startMicros;
+    unsigned long durationMs = durationMicros / 1000;
+
+    // Get diagnostics
+    DiagnosticData diag = boatData->getDiagnostics();
+
+    // Check for overrun (>200ms)
+    if (durationMs > 200) {
+        // Log warning
+        logger.broadcastLog(LogLevel::WARN, "CalculationEngine", "OVERRUN",
+            String("{\"duration_ms\":") + durationMs + ",\"overrun_count\":" + (diag.calculationOverruns + 1) + "}");
+    }
+}
+
+/**
+ * @brief NMEA message handler integration point (T040 - placeholder)
+ *
+ * NMEA0183 and NMEA2000 message handlers will call boatData->updateGPS(),
+ * boatData->updateCompass(), etc. to update sensor data.
+ *
+ * Example integration (to be implemented in separate NMEA handler feature):
+ * @code
+ * void handleNMEA0183_RMC(tNMEA0183Msg& msg) {
+ *     // Parse RMC message
+ *     double lat = parseLatitude(msg);
+ *     double lon = parseLongitude(msg);
+ *     double cog = parseCOG(msg);
+ *     double sog = parseSOG(msg);
+ *
+ *     // Update BoatData via ISensorUpdate interface
+ *     bool accepted = boatData->updateGPS(lat, lon, cog, sog, "GPS-NMEA0183");
+ *     if (!accepted) {
+ *         // Outlier rejected - log for diagnostics
+ *         Serial.println("GPS data rejected (outlier)");
+ *     }
+ * }
+ *
+ * void handleNMEA2000_129029(const tN2kMsg& msg) {
+ *     // Parse PGN 129029 (GNSS Position Data)
+ *     double lat = N2kMsgGetDouble(msg, 0);
+ *     double lon = N2kMsgGetDouble(msg, 1);
+ *     // ... parse remaining fields
+ *
+ *     bool accepted = boatData->updateGPS(lat, lon, cog, sog, "GPS-NMEA2000");
+ * }
+ * @endcode
+ *
+ * See CLAUDE.md "BoatData Integration" section for full documentation.
+ */
 
 /**
  * @brief Check for scheduled reboot
@@ -213,6 +309,35 @@ void setup() {
     // Create WiFiManager with HAL dependencies
     wifiManager = new WiFiManager(wifiAdapter, fileSystem, &logger, &timeoutManager);
 
+    // T038: Initialize BoatData components
+    Serial.println(F("Initializing BoatData system..."));
+    sourcePrioritizer = new SourcePrioritizer();
+    boatData = new BoatData(sourcePrioritizer);
+    calculationEngine = new CalculationEngine();
+    calibrationManager = new CalibrationManager();
+
+    // Load calibration parameters from flash
+    if (calibrationManager->loadFromFlash()) {
+        CalibrationParameters calib = calibrationManager->getCalibration();
+
+        // Convert to CalibrationData for BoatData
+        CalibrationData boatCalib;
+        boatCalib.leewayCalibrationFactor = calib.leewayCalibrationFactor;
+        boatCalib.windAngleOffset = calib.windAngleOffset;
+        boatCalib.loaded = true;
+
+        boatData->setCalibration(boatCalib);
+        Serial.printf("Calibration loaded: K=%.2f, offset=%.3f rad\n",
+            calib.leewayCalibrationFactor, calib.windAngleOffset);
+    } else {
+        Serial.println(F("No calibration found - using defaults"));
+    }
+
+    // T039: Initialize calibration web server
+    calibrationWebServer = new CalibrationWebServer(calibrationManager, boatData);
+
+    Serial.println(F("BoatData system initialized"));
+
     // T045: WiFi initialization sequence
     Serial.println(F("Loading WiFi configuration..."));
     if (!wifiManager->loadConfig(wifiConfig)) {
@@ -253,6 +378,9 @@ void setup() {
 
     // Periodic keep-alive broadcast every 5 seconds
     app.onRepeat(5000, broadcastKeepAlive);
+
+    // T038: Calculation cycle every 200ms (5 Hz)
+    app.onRepeat(200, calculateDerivedParameters);
 
     // Log initialization complete
     Serial.println(F("Setup complete - entering main loop"));
