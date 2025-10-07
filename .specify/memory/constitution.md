@@ -49,7 +49,7 @@ NOTES:
 -->
 
 # Poseidon2 ESP32 Development Constitution
-The Poseidon Gateway N is an ESP32-based interface gateway that enables bidirectional communication between a SignalK server and boat instruments using multiple marine data protocols:
+The Poseidon Gateway is an ESP32-based interface gateway that enables bidirectional communication between a SignalK server and boat instruments using multiple marine data protocols:
 - NMEA 2000 (bidirectional)
 - NMEA 0183 (readonly)
 - 1-wire sensor devices
