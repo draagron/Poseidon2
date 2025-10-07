@@ -84,8 +84,10 @@ These tasks can run in parallel (different files):
        All WiFi and system events are logged via WebSocket for reliable debugging:
 
        ```bash
-       # Connect to WebSocket logs (requires Python 3 + websockets library)
-       pip3 install websockets
+       # Activate Python virtual environment
+       source src/helpers/websocket_env/bin/activate
+
+       # Connect to WebSocket logs
        python3 src/helpers/ws_logger.py <ESP32_IP>
 
        # With log filtering
@@ -110,7 +112,7 @@ These tasks can run in parallel (different files):
        1. Verify device and computer on same network segment
        2. Check firewall allows HTTP port 80 (WebSocket upgrade)
        3. Ensure device has WiFi connection (logs buffer until connected)
-       4. Verify Python websockets library installed: `pip3 install websockets`
+       4. Activate Python virtual environment: `source src/helpers/websocket_env/bin/activate`
        5. Check device IP address is correct
        ```
   - **Dependencies**: None (parallel with T003, T004)

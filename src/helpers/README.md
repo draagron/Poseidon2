@@ -9,6 +9,9 @@ Network-based logging tools for ESP32 debugging.
 ### Quick Start
 
 ```bash
+# Activate Python virtual environment
+source src/helpers/websocket_env/bin/activate
+
 # Replace with your ESP32's IP address
 python3 src/helpers/ws_logger.py 192.168.0.94
 ```
@@ -24,6 +27,9 @@ python3 src/helpers/ws_logger.py 192.168.0.94
 ### Usage Examples
 
 ```bash
+# Activate Python virtual environment first
+source src/helpers/websocket_env/bin/activate
+
 # Connect to ESP32 (replace IP with yours)
 python3 src/helpers/ws_logger.py 192.168.0.94
 
@@ -60,8 +66,26 @@ WebSocket handshake complete
 
 ### Requirements
 
+#### First Time Setup
+
+If the virtual environment doesn't exist yet, create it and install the websockets library:
+
 ```bash
-# Install websockets library (required)
-pip3 install websockets
+# Create virtual environment
+python3 -m venv src/helpers/websocket_env
+
+# Activate it
+source src/helpers/websocket_env/bin/activate
+
+# Install websockets library
+uv pip install websockets
+```
+
+#### Regular Use
+
+Once set up, simply activate the virtual environment before running the logger:
+
+```bash
+source src/helpers/websocket_env/bin/activate
 ```
 
