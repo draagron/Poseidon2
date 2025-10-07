@@ -1,51 +1,55 @@
 <!--
 SYNC IMPACT REPORT - Constitution Amendment
-Version Change: 1.0.0 → 1.1.0 (MINOR)
-Date: 2025-10-06
+Version Change: 1.1.0 → 1.2.0 (MINOR)
+Date: 2025-10-07
 
 RATIONALE FOR MINOR VERSION BUMP:
-- Added new section "Reference Documentation and Examples" under Technology Stack
-- Material expansion of guidance with official documentation links and reference implementation
-- Provides critical resources for developers implementing features
+- Updated Principle V: Network-Based Debugging to prescribe WebSocket logging instead of UDP
+- Material change to prescribed logging mechanism reflects current implementation
+- Aligns constitutional requirements with production codebase
 
 MODIFIED PRINCIPLES:
-- None (core principles unchanged)
+- Principle V: Network-Based Debugging (lines 92-101)
+  - Changed from UDP broadcast logging to WebSocket logging
+  - Updated endpoint specification and reliability guarantees
+  - Removed UDP-specific implementation details
 
 ADDED SECTIONS:
-- Technology Stack > Reference Documentation and Examples (lines 158-168)
-  - Official Library Documentation subsection
-  - Project Reference Implementation subsection
-
-REMOVED SECTIONS:
 - None
 
-CONTENT ADDITIONS:
-- NMEA2000 library reference documentation URL
-- NMEA2000 repository reference
-- NMEA0183 repository reference
-- Reference to examples/poseidongw/ as working implementation
-- Reference to examples/poseidongw/src/ for architectural guidance
+REMOVED SECTIONS:
+- Principle V: UDP-specific implementation details removed
+
+CONTENT CHANGES:
+- "UDP broadcast logging" → "WebSocket logging"
+- Added: "WebSocket endpoint: ws://<device-ip>/logs"
+- Added: "TCP-based protocol ensures reliable delivery (no packet loss)"
+- Updated fallback: "flash if UDP unavailable" → "flash if WebSocket unavailable"
+- Removed: "Lightweight UDP logger to minimize network overhead"
 
 TEMPLATES REQUIRING UPDATES:
-✅ plan-template.md - Already aligned, no changes needed
+✅ plan-template.md - Already aligned (references "Network Debugging" generically)
 ✅ spec-template.md - No constitution-specific dependencies
 ✅ tasks-template.md - No constitution-specific dependencies
 ✅ .claude/commands/*.md - No updates required
 
 ALIGNMENT VALIDATION:
-✅ No principle changes - existing template alignment maintained
-✅ New reference section is informational - no enforcement impact
+✅ Principle V updated to reflect WebSocket implementation
 ✅ All 7 core principles still have corresponding checklist items in plan-template.md
-✅ Technology stack requirements remain consistent
+✅ Technology stack requirements remain consistent (ESPAsyncWebServer already approved)
+✅ Documentation now aligns with src/utils/WebSocketLogger implementation
 
 FOLLOW-UP TODOs:
-- None - informational addition only, no template changes required
+- None - implementation already migrated to WebSocket (src/utils/WebSocketLogger.{h,cpp})
 
 NOTES:
-- Constitution fully concrete (no placeholder tokens)
-- Reference documentation section aids developer onboarding
-- Example gateway provides concrete implementation patterns
-- Version bumped to 1.1.0 for material expansion of Technology Stack section
+- Constitution v1.2.0 prescribes current implementation (not obsolete UDP approach)
+- WebSocket provides superior reliability: TCP vs UDP, ordered delivery, connection state
+- Previous amendment (v1.1.0) added reference documentation; this amendment updates core principle
+
+PREVIOUS AMENDMENT (v1.0.0 → v1.1.0, 2025-10-06):
+- Added "Reference Documentation and Examples" under Technology Stack
+- Material expansion with library documentation links and reference implementation
 -->
 
 # Poseidon2 ESP32 Development Constitution
@@ -90,14 +94,15 @@ Functionality organized into focused, testable components:
 - Public interfaces documented with usage examples
 
 ### V. Network-Based Debugging
-Observability through UDP broadcast logging (serial ports reserved for device communication):
-- UDP broadcast logging mandatory for all major operations
+Observability through WebSocket logging (serial ports reserved for device communication):
+- WebSocket logging mandatory for all major operations
+- WebSocket endpoint: ws://<device-ip>/logs
+- TCP-based protocol ensures reliable delivery (no packet loss)
 - Log levels: DEBUG, INFO, WARN, ERROR, FATAL
 - Timestamps included in production builds (millis() or RTC)
 - JSON output option for machine-readable diagnostics
 - Debug builds broadcast verbose output; production builds only ERROR/FATAL
-- Lightweight UDP logger to minimize network overhead
-- Fallback: store critical errors to flash if network unavailable
+- Fallback: store critical errors to flash if WebSocket unavailable
 
 ### VI. Always-On Operation
 Permanently powered system requirements:
@@ -268,4 +273,4 @@ This constitution supersedes all other development practices. All code changes m
 - Exceptions require documented justification and approval
 - Regular audits to ensure ongoing compliance
 
-**Version**: 1.1.0 | **Ratified**: 2025-10-06 | **Last Amended**: 2025-10-06
+**Version**: 1.2.0 | **Ratified**: 2025-10-06 | **Last Amended**: 2025-10-07

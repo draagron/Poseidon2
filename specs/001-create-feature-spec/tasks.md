@@ -1,3 +1,15 @@
+---
+**⚠️ LEGACY IMPLEMENTATION NOTICE**
+
+This specification describes the initial WiFi management implementation which used UDP broadcast logging (port 4444). The system has since been migrated to WebSocket logging for improved reliability.
+
+**Current Implementation**: WebSocket logging via `ws://<device-ip>/logs`
+**Historical Implementation** (described below): UDP broadcast logging on port 4444
+
+This document is preserved for historical reference and architectural decision context. For current logging setup, see [README.md](../../README.md) and [CLAUDE.md](../../CLAUDE.md).
+
+---
+
 # Tasks: WiFi Network Management Foundation
 
 **Input**: Design documents from `/specs/001-create-feature-spec/`

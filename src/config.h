@@ -15,7 +15,7 @@
 #define CONFIG_FILE_PATH "/wifi.conf" // LittleFS path for WiFi configuration
 
 // Network Debugging Configuration
-#define UDP_DEBUG_PORT 4444          // UDP broadcast port for logging
+#define UDP_DEBUG_PORT 4444          // LEGACY: Unused - WebSocket logging now used (ws://<device-ip>/logs)
 
 // Reboot Configuration
 #define REBOOT_DELAY_MS 5000         // 5 seconds delay before reboot
