@@ -261,26 +261,81 @@ Get current connection status.
 ```
 Poseidon2/
 ├── src/
-│   ├── main.cpp                    # Entry point
-│   ├── config.h                    # Compile-time configuration
-│   ├── hal/                        # Hardware Abstraction Layer
-│   │   ├── interfaces/             # HAL interfaces (IWiFiAdapter, IFileSystem)
-│   │   └── implementations/        # ESP32-specific implementations
-│   ├── components/                 # Feature components
-│   │   ├── WiFiManager.cpp         # WiFi connection orchestrator
-│   │   ├── ConfigParser.cpp        # Config file parser
-│   │   ├── ConnectionStateMachine.cpp # State: DISCONNECTED→CONNECTING→CONNECTED
-│   │   └── ConfigWebServer.cpp     # HTTP API endpoints
-│   ├── utils/                      # Utility functions
-│   │   ├── WebSocketLogger.cpp          # WebSocket logging
-│   │   └── TimeoutManager.cpp     # ReactESP timeout tracking
-│   └── mocks/                      # Mock implementations for testing
-├── test/                           # PlatformIO tests
-│   ├── unit/                       # Unit tests (mocked, native)
-│   ├── integration/                # Integration tests (mocked)
-│   └── test_wifi_connection/       # Hardware tests (ESP32 required)
-├── examples/poseidongw/            # Reference implementation
-└── platformio.ini                  # PlatformIO configuration
+│   ├── main.cpp                         # Entry point and ReactESP event loops
+│   ├── config.h                         # Compile-time configuration
+│   ├── hal/                             # Hardware Abstraction Layer
+│   │   ├── interfaces/                  # HAL interfaces
+│   │   │   ├── IWiFiAdapter.h           # WiFi abstraction interface
+│   │   │   ├── IFileSystem.h            # Filesystem abstraction interface
+│   │   │   ├── IBoatDataStore.h         # BoatData query interface
+│   │   │   ├── ISensorUpdate.h          # Sensor data input interface
+│   │   │   ├── ISourcePrioritizer.h     # Multi-source management interface
+│   │   │   └── ICalibration.h           # Calibration interface
+│   │   └── implementations/             # ESP32-specific implementations
+│   │       ├── ESP32WiFiAdapter.cpp/h   # ESP32 WiFi adapter
+│   │       └── LittleFSAdapter.cpp/h    # LittleFS filesystem adapter
+│   ├── components/                      # Feature components
+│   │   ├── WiFiManager.cpp/h            # WiFi connection orchestrator
+│   │   ├── ConfigParser.cpp/h           # WiFi config file parser
+│   │   ├── ConfigWebServer.cpp/h        # WiFi HTTP API endpoints
+│   │   ├── ConnectionStateMachine.cpp/h # WiFi state machine
+│   │   ├── WiFiConfigFile.h             # WiFi config data structure
+│   │   ├── WiFiConnectionState.h        # WiFi connection state structure
+│   │   ├── WiFiCredentials.h            # WiFi credentials structure
+│   │   ├── BoatData.cpp/h               # Central marine data repository
+│   │   ├── SourcePrioritizer.cpp/h      # Multi-source GPS/compass prioritization
+│   │   ├── CalculationEngine.cpp/h      # Derived sailing parameters
+│   │   ├── CalibrationManager.cpp/h     # Persistent calibration storage
+│   │   └── CalibrationWebServer.cpp/h   # Calibration HTTP API
+│   ├── utils/                           # Utility functions
+│   │   ├── WebSocketLogger.cpp/h        # WebSocket-based logging
+│   │   ├── TimeoutManager.cpp/h         # ReactESP timeout tracking
+│   │   ├── DataValidator.h              # Marine data validation
+│   │   ├── AngleUtils.h                 # Angle normalization utilities
+│   │   └── LogEnums.h                   # Logging enumerations
+│   ├── types/                           # Type definitions
+│   │   └── BoatDataTypes.h              # Marine data structures
+│   ├── mocks/                           # Mock implementations for testing
+│   │   ├── MockWiFiAdapter.cpp/h        # Mock WiFi for unit tests
+│   │   ├── MockFileSystem.cpp/h         # Mock filesystem for unit tests
+│   │   ├── MockBoatDataStore.h          # Mock BoatData for unit tests
+│   │   ├── MockSourcePrioritizer.h      # Mock prioritizer for unit tests
+│   │   └── MockCalibration.h            # Mock calibration for unit tests
+│   └── helpers/                         # Development tools
+│       ├── ws_logger.py                 # WebSocket log client (Python)
+│       └── websocket_env/               # Python virtual environment
+├── test/                                # PlatformIO grouped tests
+│   ├── helpers/                         # Shared test utilities
+│   │   ├── test_mocks.h                 # Test mock implementations
+│   │   ├── test_fixtures.h              # Test data fixtures
+│   │   └── test_utilities.h             # Common test helpers
+│   ├── test_wifi_units/                 # WiFi unit tests (native)
+│   ├── test_wifi_integration/           # WiFi integration tests (native)
+│   ├── test_wifi_endpoints/             # WiFi HTTP API tests (native)
+│   ├── test_wifi_contracts/             # WiFi HAL contract tests (native)
+│   ├── test_wifi_connection/            # WiFi hardware tests (ESP32)
+│   ├── test_boatdata_contracts/         # BoatData HAL contract tests (native)
+│   ├── test_boatdata_integration/       # BoatData integration tests (native)
+│   ├── test_boatdata_units/             # BoatData unit tests (native)
+│   └── test_boatdata_timing/            # BoatData timing tests (ESP32)
+├── examples/poseidongw/                 # Reference implementation
+├── specs/                               # Feature specifications
+│   ├── 001-create-feature-spec/         # WiFi management spec
+│   ├── 002-create-feature-spec/         # (deprecated)
+│   ├── 003-boatdata-feature-as/         # BoatData feature spec
+│   └── 004-removal-of-udp/              # UDP removal documentation
+├── user_requirements/                   # User requirements
+│   ├── R001 - foundation.md             # Core requirements
+│   ├── R002 - boatdata.md               # BoatData requirements
+│   └── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
+├── .specify/                            # Development framework
+│   ├── memory/
+│   │   └── constitution.md              # Development principles (v1.2.0)
+│   └── templates/
+│       ├── spec-template.md             # Feature specification template
+│       ├── plan-template.md             # Implementation planning template
+│       └── tasks-template.md            # Task breakdown template
+└── platformio.ini                       # PlatformIO configuration
 ```
 
 ### Building
@@ -331,8 +386,10 @@ See [`test/test_wifi_connection/README.md`](test/test_wifi_connection/README.md)
 All WiFi and system events are logged via WebSocket for reliable debugging:
 
 ```bash
-# Connect to WebSocket logs (requires Python 3 + websockets library)
-pip3 install websockets
+# Activate Python virtual environment
+source src/helpers/websocket_env/bin/activate
+
+# Connect to WebSocket logs
 python3 src/helpers/ws_logger.py <ESP32_IP>
 
 # With log filtering
@@ -363,7 +420,11 @@ python3 src/helpers/ws_logger.py <ESP32_IP> --reconnect
 2. Check SSID and password are correct
 3. Ensure network is 2.4 GHz (ESP32 classic doesn't support 5 GHz)
 4. Verify device is within WiFi range
-5. Monitor WebSocket logs for detailed error messages: `python3 src/helpers/ws_logger.py <ip>`
+5. Monitor WebSocket logs for detailed error messages:
+   ```bash
+   source src/helpers/websocket_env/bin/activate
+   python3 src/helpers/ws_logger.py <ip>
+   ```
 
 ### Configuration Upload Fails (400 Error)
 
@@ -388,7 +449,7 @@ python3 src/helpers/ws_logger.py <ESP32_IP> --reconnect
 1. Verify device and computer on same network segment
 2. Check firewall allows HTTP port 80 (WebSocket upgrade)
 3. Ensure device has WiFi connection (logs buffer until connected)
-4. Verify Python websockets library installed: `pip3 install websockets`
+4. Activate Python virtual environment: `source src/helpers/websocket_env/bin/activate`
 5. Check device IP address is correct
 
 ### LittleFS Mount Failed

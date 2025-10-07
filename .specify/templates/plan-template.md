@@ -69,9 +69,9 @@
 - [ ] Public interfaces documented
 
 **Network Debugging (Principle V)**:
-- [ ] UDP broadcast logging implemented
+- [ ] WebSocket logging implemented (ws://<device-ip>/logs)
 - [ ] Log levels defined (DEBUG/INFO/WARN/ERROR/FATAL)
-- [ ] Flash fallback for critical errors
+- [ ] Flash fallback for critical errors if WebSocket unavailable
 
 **Always-On Operation (Principle VI)**:
 - [ ] WiFi always-on requirement met
@@ -102,50 +102,50 @@ specs/[###-feature]/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+**Poseidon2 uses ESP32/PlatformIO architecture with Hardware Abstraction Layer**
+
 ```
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
 src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+├── main.cpp                         # Entry point and ReactESP event loops
+├── config.h                         # Compile-time configuration
+├── hal/                             # Hardware Abstraction Layer
+│   ├── interfaces/                  # HAL interfaces (I[Feature].h)
+│   │   └── I[Feature].h             # New interface for this feature
+│   └── implementations/             # ESP32-specific implementations
+│       └── ESP32[Feature].cpp/h     # Hardware implementation
+├── components/                      # Feature components (business logic)
+│   └── [Feature].cpp/h              # New component for this feature
+├── utils/                           # Utility functions
+│   └── [Utility].h                  # New utilities if needed
+├── types/                           # Type definitions
+│   └── [Feature]Types.h             # New types if needed
+└── mocks/                           # Mock implementations for testing
+    └── Mock[Feature].cpp/h          # Mock for unit tests
 
-tests/
-├── contract/
-├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+test/
+├── helpers/                         # Shared test utilities
+│   ├── test_mocks.h                 # Test mock implementations
+│   ├── test_fixtures.h              # Test data fixtures
+│   └── test_utilities.h             # Common test helpers
+├── test_[feature]_contracts/        # HAL interface contract tests (native)
+│   ├── test_main.cpp                # Unity test runner
+│   └── test_i[feature].cpp          # Interface contract tests
+├── test_[feature]_integration/      # Integration scenarios (native, mocked hardware)
+│   ├── test_main.cpp                # Unity test runner
+│   └── test_[scenario].cpp          # One file per scenario
+├── test_[feature]_units/            # Unit tests (native, formulas/utilities)
+│   ├── test_main.cpp                # Unity test runner
+│   └── test_[component].cpp         # One file per component
+└── test_[feature]_[hardware]/       # Hardware validation tests (ESP32 required)
+    └── test_main.cpp                # Unity test runner with hardware tests
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**:
+- **ESP32 embedded system** using PlatformIO grouped test organization
+- **Test groups** organized by feature + type: `test_[feature]_[contracts|integration|units|hardware]/`
+- **HAL pattern** required: All hardware via interfaces in `hal/interfaces/`, ESP32 implementations in `hal/implementations/`
+- **Mock-first testing**: All logic testable on native platform via mocks in `src/mocks/`
+- **Hardware tests minimal**: Only for HAL validation and timing-critical operations on ESP32
 
 ## Phase 0: Outline & Research
 1. **Extract unknowns from Technical Context** above:

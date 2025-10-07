@@ -27,8 +27,8 @@
 - **Client Tools**:
   - `src/helpers/ws_logger.py`: Python 3 client script
   - Features: Auto-reconnect, log filtering, colored output, JSON format
-  - Dependencies: `websockets` library (pip3 install websockets)
-  - Usage: `python3 ws_logger.py <ESP32_IP> [--filter LEVEL] [--reconnect]`
+  - Dependencies: `websockets` library (uv pip install websockets in virtual environment)
+  - Usage: `source src/helpers/websocket_env/bin/activate && python3 ws_logger.py <ESP32_IP> [--filter LEVEL] [--reconnect]`
 
 - **Integration Pattern** (from main.cpp:108-109):
   ```cpp
@@ -127,9 +127,9 @@
 | **Client Reconnection** | N/A (stateless) | Automatic (ws_logger.py --reconnect) | WebSocket |
 | **Performance Overhead** | Low (fire-and-forget) | Low (persistent connection) | Tie |
 | **Multi-client Support** | Broadcast to subnet | Broadcast to connected clients | Tie |
-| **Setup Complexity** | Simple (nc/socat) | Moderate (websockets library) | UDP |
+| **Setup Complexity** | Simple (nc/socat) | Moderate (websockets library via uv) | UDP |
 
-**Conclusion**: WebSocket logging is superior in every reliability metric. Only slight disadvantage is client setup complexity (requires Python websockets library vs. nc/socat).
+**Conclusion**: WebSocket logging is superior in every reliability metric. Only slight disadvantage is client setup complexity (requires Python websockets library via uv pip install vs. nc/socat).
 
 **Decision**: WebSocket logging is the correct architectural choice. All documentation should reflect this.
 

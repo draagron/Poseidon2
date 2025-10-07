@@ -37,58 +37,93 @@
 - Include exact file paths in descriptions
 
 ## Path Conventions
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+**Poseidon2 uses PlatformIO grouped test organization (ESP32 embedded system)**:
+- **Source**: `src/hal/`, `src/components/`, `src/utils/`, `src/types/`, `src/mocks/`
+- **Tests**: `test/test_[feature]_[type]/` where type is `contracts`, `integration`, `units`, or `hardware`
+- **Test execution**:
+  - Native tests: `pio test -e native -f test_[feature]_*`
+  - Hardware tests: `pio test -e esp32dev_test -f test_[feature]_hardware`
+- **Test groups**: Each test directory has `test_main.cpp` that runs all tests in that group using Unity framework
 
 ## Phase 3.1: Setup
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Create HAL interface in src/hal/interfaces/I[Feature].h
+- [ ] T002 [P] Create types in src/types/[Feature]Types.h (if needed)
+- [ ] T003 [P] Create mock in src/mocks/Mock[Feature].cpp/h
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
-- [ ] T004 [P] Contract test POST /api/users in tests/contract/test_users_post.py
-- [ ] T005 [P] Contract test GET /api/users/{id} in tests/contract/test_users_get.py
-- [ ] T006 [P] Integration test user registration in tests/integration/test_registration.py
-- [ ] T007 [P] Integration test auth flow in tests/integration/test_auth.py
+
+### Contract Tests (HAL interface validation)
+- [ ] T004 Create test_[feature]_contracts/ directory with test_main.cpp
+- [ ] T005 [P] Contract test for I[Feature] interface in test_[feature]_contracts/test_i[feature].cpp
+
+### Integration Tests (End-to-end scenarios with mocked hardware)
+- [ ] T006 Create test_[feature]_integration/ directory with test_main.cpp
+- [ ] T007 [P] Integration test scenario 1 in test_[feature]_integration/test_[scenario1].cpp
+- [ ] T008 [P] Integration test scenario 2 in test_[feature]_integration/test_[scenario2].cpp
+
+### Unit Tests (Formula/utility validation)
+- [ ] T009 Create test_[feature]_units/ directory with test_main.cpp (if needed)
+- [ ] T010 [P] Unit test for utilities in test_[feature]_units/test_[component].cpp (if needed)
 
 ## Phase 3.3: Core Implementation (ONLY after tests are failing)
-- [ ] T008 [P] User model in src/models/user.py
-- [ ] T009 [P] UserService CRUD in src/services/user_service.py
-- [ ] T010 [P] CLI --create-user in src/cli/user_commands.py
-- [ ] T011 POST /api/users endpoint
-- [ ] T012 GET /api/users/{id} endpoint
-- [ ] T013 Input validation
-- [ ] T014 Error handling and logging
+- [ ] T011 [P] Component implementation in src/components/[Feature].cpp/h
+- [ ] T012 [P] ESP32 hardware adapter in src/hal/implementations/ESP32[Feature].cpp/h
+- [ ] T013 [P] Utility functions in src/utils/[Utility].h (if needed)
+- [ ] T014 Integrate component into src/main.cpp (setup, event loops, callbacks)
+- [ ] T015 WebSocket logging for key events (ConnectionEvent, errors)
+- [ ] T016 Error handling and validation
 
 ## Phase 3.4: Integration
-- [ ] T015 Connect UserService to DB
-- [ ] T016 Auth middleware
-- [ ] T017 Request/response logging
-- [ ] T018 CORS and security headers
+- [ ] T017 Register ReactESP event loops in main.cpp
+- [ ] T018 Configure component dependencies via dependency injection
+- [ ] T019 LittleFS integration for persistent storage (if needed)
+- [ ] T020 Calibration/configuration API endpoints (if needed)
 
-## Phase 3.5: Polish
-- [ ] T019 [P] Unit tests for validation in tests/unit/test_validation.py
-- [ ] T020 Performance tests (<200ms)
-- [ ] T021 [P] Update docs/api.md
-- [ ] T022 Remove duplication
-- [ ] T023 Run manual-testing.md
+## Phase 3.5: Hardware Validation & Polish
+- [ ] T021 Create test_[feature]_hardware/ directory with test_main.cpp (ESP32 required)
+- [ ] T022 Hardware timing test in test_[feature]_hardware/test_main.cpp
+- [ ] T023 Memory footprint validation (static allocation check)
+- [ ] T024 [P] Update CLAUDE.md with feature integration guide
+- [ ] T025 [P] Update README.md feature status
+- [ ] T026 Constitutional compliance validation (all 7 principles)
 
 ## Dependencies
-- Tests (T004-T007) before implementation (T008-T014)
-- T008 blocks T009, T015
-- T016 blocks T018
-- Implementation before polish (T019-T023)
+- HAL interface (T001) before all tests and implementation
+- Tests (T004-T010) before implementation (T011-T016)
+- Component (T011) before ESP32 adapter (T012)
+- Core implementation (T011-T016) before integration (T017-T020)
+- Integration complete before hardware tests (T021-T023)
+- Implementation before documentation polish (T024-T026)
 
-## Parallel Example
+## Parallel Execution Examples
+```bash
+# Setup phase - create interface, types, and mocks in parallel:
+pio test -e native -f test_[feature]_contracts &  # T005 (after T004)
+# Create types and mocks while contract tests run
+
+# Test phase - write all test groups in parallel:
+# T007, T008, T010 can all be written simultaneously (different files)
+
+# Core implementation - component and adapter in parallel:
+# T011 (component) and T012 (ESP32 adapter) are independent
+
+# Documentation - update CLAUDE.md and README.md in parallel:
+# T024 and T025 are independent
 ```
-# Launch T004-T007 together:
-Task: "Contract test POST /api/users in tests/contract/test_users_post.py"
-Task: "Contract test GET /api/users/{id} in tests/contract/test_users_get.py"
-Task: "Integration test registration in tests/integration/test_registration.py"
-Task: "Integration test auth in tests/integration/test_auth.py"
+
+## Test Execution Commands
+```bash
+# Run all tests for this feature
+pio test -e native -f test_[feature]_*
+
+# Run specific test types
+pio test -e native -f test_[feature]_contracts    # Contract tests only
+pio test -e native -f test_[feature]_integration  # Integration tests only
+pio test -e native -f test_[feature]_units        # Unit tests only
+
+# Run hardware tests (ESP32 required)
+pio test -e esp32dev_test -f test_[feature]_hardware
 ```
 
 ## Notes
@@ -100,21 +135,32 @@ Task: "Integration test auth in tests/integration/test_auth.py"
 ## Task Generation Rules
 *Applied during main() execution*
 
-1. **From Contracts**:
-   - Each contract file → contract test task [P]
-   - Each endpoint → implementation task
-   
-2. **From Data Model**:
-   - Each entity → model creation task [P]
-   - Relationships → service layer tasks
-   
-3. **From User Stories**:
-   - Each story → integration test [P]
-   - Quickstart scenarios → validation tasks
+1. **From HAL Interfaces**:
+   - Each interface → contract test task in test_[feature]_contracts/ [P]
+   - Each interface → mock implementation in src/mocks/ [P]
+   - Each interface → ESP32 hardware adapter in src/hal/implementations/
 
-4. **Ordering**:
-   - Setup → Tests → Models → Services → Endpoints → Polish
+2. **From Data Model**:
+   - Each entity → types file in src/types/ [P]
+   - Each entity → component in src/components/ [P]
+
+3. **From User Stories**:
+   - Each scenario → integration test in test_[feature]_integration/ [P]
+   - Each scenario → component method implementation
+
+4. **From Calculations/Utilities**:
+   - Each formula → unit test in test_[feature]_units/ [P]
+   - Each utility → implementation in src/utils/
+
+5. **Hardware Validation**:
+   - Timing-critical features → hardware test in test_[feature]_hardware/
+   - Memory-critical features → static allocation validation task
+
+6. **Ordering** (TDD + Constitutional):
+   - HAL interfaces → Mocks → Tests → Implementation → Integration → Hardware validation → Documentation
+   - All tests must fail before implementation starts
    - Dependencies block parallel execution
+   - Constitutional compliance validation at end
 
 ## Validation Checklist
 *GATE: Checked by main() before returning*

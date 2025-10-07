@@ -397,7 +397,11 @@ DISCONNECTED → CONNECTING → CONNECTED
 2. Verify SSID and password are correct
 3. Ensure at least one network is available and in range
 4. Check network is 2.4 GHz (ESP32 classic doesn't support 5 GHz)
-5. Monitor WebSocket logs for detailed error messages: `python3 src/helpers/ws_logger.py <ip>`
+5. Monitor WebSocket logs for detailed error messages:
+   ```bash
+   source src/helpers/websocket_env/bin/activate
+   python3 src/helpers/ws_logger.py <ip>
+   ```
 
 #### Configuration Upload Returns 400 Error
 **Cause**: Validation failure
@@ -441,7 +445,7 @@ DISCONNECTED → CONNECTING → CONNECTED
 **Solutions**:
 1. Verify device and computer on same network
 2. Check firewall allows HTTP/WebSocket port 80
-3. Check Python websockets library: `pip3 install websockets`
+3. Activate Python virtual environment: `source src/helpers/websocket_env/bin/activate`
 4. Verify device IP address
 5. Use `python3 src/helpers/ws_logger.py <ip> --reconnect` for auto-reconnect
 6. Logs buffer until WiFi connected - wait for connection
@@ -515,7 +519,7 @@ logger.broadcastLog(LogLevel::INFO, F("WiFiManager"), F("CONNECTION_ATTEMPT"),
     String("{\"ssid\":\"") + ssid + "\",\"timeout\":30}");
 ```
 - Endpoint: ws://<device-ip>/logs
-- Client: python3 src/helpers/ws_logger.py <ip>
+- Client: `source src/helpers/websocket_env/bin/activate && python3 src/helpers/ws_logger.py <ip>`
 - Protocol: TCP-based WebSocket (no packet loss)
 
 **HAL Abstraction** (for testability):
@@ -917,7 +921,11 @@ pio test -e native -f test_*_units
 3. Check diagnostic counters: `boatData->getDiagnostics().rejectionCount`
 
 **Calculation overruns**:
-1. Monitor WebSocket logs for "OVERRUN" warnings: `python3 src/helpers/ws_logger.py <ip> --filter WARN`
+1. Monitor WebSocket logs for "OVERRUN" warnings:
+   ```bash
+   source src/helpers/websocket_env/bin/activate
+   python3 src/helpers/ws_logger.py <ip> --filter WARN
+   ```
 2. Check `diagnostics.calculationOverruns` counter
 3. Expected duration: <50ms typical, <200ms max
 

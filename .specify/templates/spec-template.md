@@ -65,6 +65,19 @@ When creating this spec from a user prompt:
 - What happens when [boundary condition]?
 - How does system handle [error scenario]?
 
+### Testing Strategy *(ESP32 embedded system)*
+**Mock-First Approach** (Constitutional requirement):
+- **Contract Tests**: Validate HAL interfaces work correctly with mocks (native platform)
+- **Integration Tests**: Test complete scenarios with mocked hardware (native platform)
+- **Unit Tests**: Validate formulas, calculations, and utilities (native platform)
+- **Hardware Tests**: Minimal - only for HAL validation and timing-critical operations (ESP32 required)
+
+**Test Organization** (PlatformIO grouped tests):
+- `test_[feature]_contracts/` - HAL interface contract validation
+- `test_[feature]_integration/` - End-to-end scenarios with mocked hardware
+- `test_[feature]_units/` - Formula and utility unit tests
+- `test_[feature]_hardware/` - Hardware validation tests (ESP32 only)
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
