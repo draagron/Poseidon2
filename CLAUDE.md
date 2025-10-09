@@ -65,7 +65,7 @@ SD Card: GPIO 15       |  LED: GPIO 2
 ### Initialization Sequence - MUST FOLLOW THIS ORDER
 1. WiFi connection
 2. I2C buses (Wire0 and Wire1)
-3. OLED display
+3. OLED display (I2C Bus 2, 128x64 SSD1306, address 0x3C)
 4. Serial2 for NMEA 0183
 5. NMEA2000 CAN bus
 6. Message handlers registration
@@ -316,6 +316,158 @@ Reference: `examples/poseidongw/src/NMEA0183Handlers.cpp`
 - Serial2 dedicated to NMEA 0183 input (read-only)
 - Parse to internal data structures
 - Convert to NMEA 2000 for network distribution
+
+### OLED Display Management
+
+The OLED display feature provides real-time system status on a 128x64 SSD1306 OLED connected via I2C Bus 2.
+
+#### Display Initialization
+
+Initialize display after WiFi connection in `main.cpp`:
+
+```cpp
+#include "hal/implementations/ESP32DisplayAdapter.h"
+#include "hal/implementations/ESP32SystemMetrics.h"
+#include "components/DisplayManager.h"
+
+// Global instances
+ESP32DisplayAdapter* displayAdapter = nullptr;
+ESP32SystemMetrics* systemMetrics = nullptr;
+DisplayManager* displayManager = nullptr;
+
+void setup() {
+    // ... WiFi initialization ...
+
+    // Initialize OLED display (after WiFi, before NMEA)
+    Serial.println(F("Initializing OLED display..."));
+    displayAdapter = new ESP32DisplayAdapter();
+    systemMetrics = new ESP32SystemMetrics();
+    displayManager = new DisplayManager(displayAdapter, systemMetrics, &logger);
+
+    if (displayManager->init()) {
+        Serial.println(F("OLED display initialized successfully"));
+    } else {
+        Serial.println(F("WARNING: OLED display initialization failed"));
+        // Graceful degradation: Continue operation without display
+    }
+
+    // ... continue with NMEA initialization ...
+}
+```
+
+#### Hardware Configuration
+
+- **Display**: SSD1306 OLED, 128x64 pixels, monochrome
+- **I2C Bus**: Bus 2 (SDA=GPIO21, SCL=GPIO22)
+- **I2C Address**: 0x3C (common for 128x64 displays)
+- **Clock Speed**: 400kHz (fast mode)
+- **Library**: Adafruit_SSD1306 + Adafruit_GFX
+
+#### ReactESP Display Loops
+
+Add periodic display updates after other event loops:
+
+```cpp
+void setup() {
+    // ... initialization ...
+
+    // Display refresh loops - 1s animation, 5s status
+    app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {
+        if (displayManager != nullptr) {
+            displayManager->updateAnimationIcon();
+        }
+    });
+
+    app.onRepeat(DISPLAY_STATUS_INTERVAL_MS, []() {
+        if (displayManager != nullptr) {
+            displayManager->renderStatusPage();
+        }
+    });
+}
+```
+
+**Timing Requirements**:
+- Animation icon update: 1 second (rotating spinner: / - \ |)
+- Status page refresh: 5 seconds (WiFi, RAM, flash, CPU metrics)
+- Display update duration: < 50ms typical, < 200ms max
+
+#### Display Layout
+
+6-line text display (font size 1, 5x7 pixels per character):
+
+```
+Line 0 (y=0):  WiFi: <SSID>         (21 chars max)
+Line 1 (y=10): IP: <IP Address>     (e.g., "192.168.1.100")
+Line 2 (y=20): RAM: <Free KB>       (e.g., "RAM: 244KB")
+Line 3 (y=30): Flash: <Used/Total>  (e.g., "Flash: 830/1920KB")
+Line 4 (y=40): CPU Idle: <%>        (e.g., "CPU Idle: 85%")
+Line 5 (y=50): [ <icon> ]           (right corner, rotating icon)
+```
+
+#### HAL Interfaces
+
+Display system uses Hardware Abstraction Layer for testability:
+
+- **IDisplayAdapter**: Abstracts SSD1306 OLED hardware
+  - Production: `ESP32DisplayAdapter` (uses Adafruit_SSD1306)
+  - Testing: `MockDisplayAdapter` (for unit/integration tests)
+
+- **ISystemMetrics**: Abstracts ESP32 system metrics
+  - Production: `ESP32SystemMetrics` (uses ESP.h and FreeRTOS APIs)
+  - Testing: `MockSystemMetrics` (returns fixed values)
+
+#### Graceful Degradation
+
+Display initialization failures DO NOT halt system operation:
+
+```cpp
+if (displayManager->init()) {
+    // Display ready - render startup progress
+    displayManager->renderStartupProgress(status);
+} else {
+    // Display unavailable - log error and continue
+    logger.broadcastLog(LogLevel::ERROR, "Main", "DISPLAY_INIT_FAILED",
+                        F("{\"reason\":\"I2C communication error\"}"));
+    // System continues without display (FR-027)
+}
+```
+
+**Common Failure Modes**:
+- I2C communication error (display not connected or wrong address)
+- I2C bus conflict (another device using same address)
+- Display initialization timeout
+
+**Recovery**: Reboot device or check I2C connections. System continues operating normally.
+
+#### Memory Footprint
+
+Display system uses efficient static allocation (constitutional compliance):
+
+- **DisplayMetrics**: 21 bytes (system resource metrics)
+- **SubsystemStatus**: 66 bytes (WiFi, filesystem, web server status)
+- **DisplayPage**: 10 bytes (page definition)
+- **SSD1306 Framebuffer**: 1024 bytes (128x64 / 8 bits)
+- **Total RAM**: ~1.1KB (0.3% of ESP32's 320KB RAM)
+
+All string literals use `F()` macro to store in flash (PROGMEM).
+
+#### Troubleshooting
+
+**Display not initializing**:
+1. Verify I2C connections (SDA=GPIO21, SCL=GPIO22)
+2. Check I2C address (0x3C for 128x64, 0x3D alternative)
+3. Test with I2C scanner: `Wire.begin(21, 22); Wire.beginTransmission(0x3C);`
+4. Monitor WebSocket logs for "DISPLAY_INIT_FAILED" event
+
+**Display showing garbage**:
+1. Verify display resolution matches code (128x64)
+2. Check I2C clock speed (400kHz max for most SSD1306)
+3. Ensure proper power supply (3.3V stable)
+
+**Display frozen**:
+1. Check ReactESP event loops running (`app.tick()` in main loop)
+2. Verify display manager not null before calling methods
+3. Check for watchdog timer resets (excessive blocking in render loop)
 
 ## Build Configurations
 
