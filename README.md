@@ -37,7 +37,7 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
 - ✅ **WebSocket Logging**: Reliable network-based debugging
 - ✅ **Hardware Abstraction**: Testable via mocks (HAL pattern)
 - ✅ **ReactESP**: Event-driven architecture for responsive operation
-- 🚧 **OLED Display**: Real-time status and diagnostics
+- ✅ **OLED Display**: Real-time system status and diagnostics on 128x64 SSD1306
 - 🚧 **SD Card Logging**: Optional data recording
 
 ## Hardware Requirements
@@ -255,6 +255,68 @@ Get current connection status.
 - **First fails, second succeeds**: 30-60 seconds
 - **All networks fail**: ~95 seconds (90s attempts + 5s delay)
 
+## OLED Display
+
+### Overview
+Real-time system status display on 128x64 SSD1306 OLED connected via I2C Bus 2.
+
+### Display Content
+
+#### Startup Screen
+Shows subsystem initialization progress:
+- "Poseidon2 Gateway" header
+- WiFi connection status (Connecting/Connected/Failed)
+- Filesystem mount status (Mounting/Mounted/Failed)
+- Web server startup status (Starting/Running/Failed)
+
+#### Runtime Status Screen
+6-line display showing:
+- **Line 0**: WiFi SSID (or "Disconnected")
+- **Line 1**: IP address (e.g., "192.168.1.100")
+- **Line 2**: Free RAM (e.g., "RAM: 244KB")
+- **Line 3**: Flash usage (e.g., "Flash: 830/1920KB")
+- **Line 4**: CPU idle percentage (e.g., "CPU Idle: 85%")
+- **Line 5**: Rotating animation icon (/, -, \, |)
+
+### Display Updates
+- **Animation**: 1-second refresh (rotating spinner)
+- **Status**: 5-second refresh (metrics update)
+- **WiFi events**: Real-time updates on state changes
+
+### Hardware Configuration
+- **Display**: SSD1306 OLED, 128x64 pixels, monochrome
+- **Connection**: I2C Bus 2 (SDA=GPIO21, SCL=GPIO22)
+- **I2C Address**: 0x3C (standard for 128x64 displays)
+- **Clock Speed**: 400kHz (fast mode)
+- **Library**: Adafruit_SSD1306 + Adafruit_GFX
+
+### Graceful Degradation
+If display initialization fails:
+- Error logged via WebSocket
+- System continues operation without display
+- All other subsystems function normally
+
+### Memory Footprint
+- **Static allocation**: ~97 bytes (DisplayMetrics, SubsystemStatus)
+- **Framebuffer**: 1024 bytes (SSD1306 requirement)
+- **Total RAM**: ~1.1KB (0.34% of ESP32 RAM)
+- **Flash usage**: +30KB (~1.5% of partition)
+
+### Testing
+```bash
+# Contract tests (HAL interface validation)
+pio test -e native -f test_oled_contracts
+
+# Integration tests (5 end-to-end scenarios)
+pio test -e native -f test_oled_integration
+
+# Unit tests (component logic, formatters)
+pio test -e native -f test_oled_units
+
+# Hardware tests (ESP32 with OLED required)
+pio test -e esp32dev_test -f test_oled_hardware
+```
+
 ## Development
 
 ### Project Structure
@@ -270,10 +332,14 @@ Poseidon2/
 │   │   │   ├── IBoatDataStore.h         # BoatData query interface
 │   │   │   ├── ISensorUpdate.h          # Sensor data input interface
 │   │   │   ├── ISourcePrioritizer.h     # Multi-source management interface
-│   │   │   └── ICalibration.h           # Calibration interface
+│   │   │   ├── ICalibration.h           # Calibration interface
+│   │   │   ├── IDisplayAdapter.h        # OLED display abstraction interface
+│   │   │   └── ISystemMetrics.h         # System metrics abstraction interface
 │   │   └── implementations/             # ESP32-specific implementations
 │   │       ├── ESP32WiFiAdapter.cpp/h   # ESP32 WiFi adapter
-│   │       └── LittleFSAdapter.cpp/h    # LittleFS filesystem adapter
+│   │       ├── LittleFSAdapter.cpp/h    # LittleFS filesystem adapter
+│   │       ├── ESP32DisplayAdapter.cpp/h # ESP32 OLED display adapter
+│   │       └── ESP32SystemMetrics.cpp/h  # ESP32 system metrics adapter
 │   ├── components/                      # Feature components
 │   │   ├── WiFiManager.cpp/h            # WiFi connection orchestrator
 │   │   ├── ConfigParser.cpp/h           # WiFi config file parser
@@ -286,21 +352,29 @@ Poseidon2/
 │   │   ├── SourcePrioritizer.cpp/h      # Multi-source GPS/compass prioritization
 │   │   ├── CalculationEngine.cpp/h      # Derived sailing parameters
 │   │   ├── CalibrationManager.cpp/h     # Persistent calibration storage
-│   │   └── CalibrationWebServer.cpp/h   # Calibration HTTP API
+│   │   ├── CalibrationWebServer.cpp/h   # Calibration HTTP API
+│   │   ├── DisplayManager.cpp/h         # OLED display orchestration
+│   │   ├── MetricsCollector.cpp/h       # System metrics collection
+│   │   ├── DisplayFormatter.h           # Display string formatting
+│   │   └── StartupProgressTracker.cpp/h # Subsystem initialization tracking
 │   ├── utils/                           # Utility functions
 │   │   ├── WebSocketLogger.cpp/h        # WebSocket-based logging
 │   │   ├── TimeoutManager.cpp/h         # ReactESP timeout tracking
 │   │   ├── DataValidator.h              # Marine data validation
 │   │   ├── AngleUtils.h                 # Angle normalization utilities
+│   │   ├── DisplayLayout.h              # OLED display layout utilities
 │   │   └── LogEnums.h                   # Logging enumerations
 │   ├── types/                           # Type definitions
-│   │   └── BoatDataTypes.h              # Marine data structures
+│   │   ├── BoatDataTypes.h              # Marine data structures
+│   │   └── DisplayTypes.h               # OLED display data structures
 │   ├── mocks/                           # Mock implementations for testing
 │   │   ├── MockWiFiAdapter.cpp/h        # Mock WiFi for unit tests
 │   │   ├── MockFileSystem.cpp/h         # Mock filesystem for unit tests
 │   │   ├── MockBoatDataStore.h          # Mock BoatData for unit tests
 │   │   ├── MockSourcePrioritizer.h      # Mock prioritizer for unit tests
-│   │   └── MockCalibration.h            # Mock calibration for unit tests
+│   │   ├── MockCalibration.h            # Mock calibration for unit tests
+│   │   ├── MockDisplayAdapter.h         # Mock OLED display for unit tests
+│   │   └── MockSystemMetrics.h          # Mock system metrics for unit tests
 │   └── helpers/                         # Development tools
 │       ├── ws_logger.py                 # WebSocket log client (Python)
 │       └── websocket_env/               # Python virtual environment
@@ -317,17 +391,23 @@ Poseidon2/
 │   ├── test_boatdata_contracts/         # BoatData HAL contract tests (native)
 │   ├── test_boatdata_integration/       # BoatData integration tests (native)
 │   ├── test_boatdata_units/             # BoatData unit tests (native)
-│   └── test_boatdata_timing/            # BoatData timing tests (ESP32)
+│   ├── test_boatdata_timing/            # BoatData timing tests (ESP32)
+│   ├── test_oled_contracts/             # OLED HAL contract tests (native)
+│   ├── test_oled_integration/           # OLED integration tests (native)
+│   ├── test_oled_units/                 # OLED unit tests (native)
+│   └── test_oled_hardware/              # OLED hardware tests (ESP32)
 ├── examples/poseidongw/                 # Reference implementation
 ├── specs/                               # Feature specifications
 │   ├── 001-create-feature-spec/         # WiFi management spec
 │   ├── 002-create-feature-spec/         # (deprecated)
 │   ├── 003-boatdata-feature-as/         # BoatData feature spec
-│   └── 004-removal-of-udp/              # UDP removal documentation
+│   ├── 004-removal-of-udp/              # UDP removal documentation
+│   └── 005-oled-basic-info/             # OLED display feature spec
 ├── user_requirements/                   # User requirements
 │   ├── R001 - foundation.md             # Core requirements
 │   ├── R002 - boatdata.md               # BoatData requirements
-│   └── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
+│   ├── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
+│   └── R004 - OLED basic info.md        # OLED display requirements
 ├── .specify/                            # Development framework
 │   ├── memory/
 │   │   └── constitution.md              # Development principles (v1.2.0)
@@ -468,9 +548,11 @@ pio run -t uploadfs
 
 ### Memory Footprint
 - **WiFi Config**: ~334 bytes RAM (3 networks)
-- **Flash Storage**: ~200 bytes (config file)
-- **Code Size**: ~850 KB flash (43% of 1.9 MB partition)
-- **RAM Usage**: ~45 KB (13.9% of 320 KB)
+- **BoatData**: ~1,128 bytes RAM (static allocation)
+- **OLED Display**: ~1.1 KB RAM (97 bytes + 1KB framebuffer)
+- **Flash Storage**: ~200 bytes (config files)
+- **Code Size**: ~924 KB flash (47% of 1.9 MB partition)
+- **RAM Usage**: ~44 KB (13.5% of 320 KB)
 
 ### Timing Benchmarks
 - **Boot to services ready**: < 2 seconds
@@ -510,7 +592,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management Complete | 🚧 Marine Protocols In Progress
+**Status**: ✅ WiFi Management | ✅ OLED Display | 🚧 Marine Protocols In Progress
 
-**Last Updated**: 2025-10-06
-**Version**: 1.0.0 (WiFi Management Foundation)
+**Last Updated**: 2025-10-09
+**Version**: 1.1.0 (WiFi Management + OLED Display)
