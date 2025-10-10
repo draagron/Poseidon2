@@ -76,26 +76,39 @@ public:
     virtual uint32_t getFreeFlashBytes() = 0;
 
     /**
-     * @brief Get CPU idle time percentage
+     * @brief Get main loop frequency in Hz
      *
-     * Returns the percentage of time the CPU spends in the IDLE task
-     * (0% = fully loaded, 100% = completely idle).
+     * Returns the average frequency of main loop iterations over the last 5-second
+     * measurement window. Value of 0 indicates no measurement has been taken yet.
      *
      * Implementation:
-     * - Use FreeRTOS vTaskGetRunTimeStats() or uxTaskGetSystemState()
-     * - Calculate: (IDLE task runtime / total runtime) * 100
-     * - Requires CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y in sdkconfig
-     *   (enabled by default in ESP32 Arduino core)
+     * - Uses LoopPerformanceMonitor utility class
+     * - Counts loop iterations over 5-second windows
+     * - Calculates frequency as (iteration_count / 5) Hz
+     * - Updated every 5 seconds (FR-043)
      *
-     * Performance impact: ~1-2% CPU overhead for runtime stats collection
-     * Update frequency: Every 5 seconds (FR-016)
+     * Measurement approach:
+     * - Call instrumentLoop() at the start of every main loop iteration
+     * - Counter accumulates for 5 seconds, then calculates frequency
+     * - Returns 0 before first measurement completes (FR-049)
      *
-     * @return CPU idle time percentage (0-100)
+     * Performance impact: < 0.1% (< 6 microseconds per loop)
+     * Update frequency: Every 5 seconds (FR-043)
+     * Memory footprint: 16 bytes static allocation
      *
-     * @see FR-015: Display CPU idle % on OLED
-     * @see research.md: FreeRTOS CPU idle time statistics
+     * Typical values:
+     * - 100-500 Hz: Normal for ESP32 with ReactESP event loops
+     * - < 10 Hz: Warning - critically low performance
+     * - > 1000 Hz: Unexpected - verify measurement accuracy
+     *
+     * @return Loop frequency in Hz (0 = not yet measured)
+     *
+     * @see FR-041: Loop iteration count measured over 5-second window
+     * @see FR-042: Frequency calculated as (count / 5) Hz
+     * @see FR-044: Replaces "CPU Idle: 85%" display metric
+     * @see contracts/ISystemMetrics-getLoopFrequency.md
      */
-    virtual uint8_t getCpuIdlePercent() = 0;
+    virtual uint32_t getLoopFrequency() = 0;
 
     /**
      * @brief Get current millisecond timestamp

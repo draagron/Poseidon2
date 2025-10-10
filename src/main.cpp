@@ -443,6 +443,11 @@ void setup() {
  * - Web server requests (handled by ESPAsyncWebServer)
  */
 void loop() {
+    // T023: Instrument loop performance (before app.tick() to measure full loop time)
+    if (systemMetrics != nullptr) {
+        systemMetrics->instrumentLoop();
+    }
+
     // Process ReactESP events
     app.tick();
 

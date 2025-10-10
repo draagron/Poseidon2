@@ -34,56 +34,32 @@ uint32_t ESP32SystemMetrics::getFreeFlashBytes() {
     return ESP.getFreeSketchSpace();
 }
 
-uint8_t ESP32SystemMetrics::getCpuIdlePercent() {
-    // Calculate CPU idle time using FreeRTOS runtime statistics
-    //
-    // NOTE: uxTaskGetSystemState() requires CONFIG_FREERTOS_USE_TRACE_FACILITY
-    // and CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS to be enabled in sdkconfig.
-    // If not available, we'll return a placeholder value.
-    //
-    // For now, return a reasonable default (85% idle is typical for idle ESP32)
-    // TODO: Enable FreeRTOS stats in platformio.ini build_flags if needed:
-    // build_flags = -DCONFIG_FREERTOS_USE_TRACE_FACILITY=1
-    //               -DCONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=1
+uint32_t ESP32SystemMetrics::getLoopFrequency() {
+    /**
+     * Returns the main loop frequency in Hz.
+     *
+     * Delegates to LoopPerformanceMonitor which tracks loop iterations
+     * over 5-second windows and calculates average frequency.
+     *
+     * @return uint32_t Loop frequency in Hz (0 = not yet measured)
+     *
+     * Performance: < 1 µs (simple member access)
+     * Constitutional compliance: FR-042 (frequency = count / 5)
+     */
+    return _loopMonitor.getLoopFrequency();
+}
 
-    // Simplified implementation: Return fixed value for now
-    // In production, this should be configurable or use alternative metrics
-    return 85;  // Typical idle percentage for ESP32 with moderate load
-
-    /* Full implementation (requires FreeRTOS stats enabled):
-    TaskStatus_t* taskStatusArray;
-    volatile UBaseType_t taskCount;
-    uint32_t totalRuntime = 0;
-    uint32_t idleRuntime = 0;
-
-    taskCount = uxTaskGetNumberOfTasks();
-    taskStatusArray = (TaskStatus_t*)pvPortMalloc(taskCount * sizeof(TaskStatus_t));
-    if (taskStatusArray == NULL) {
-        return 85;  // Out of memory - return reasonable default
-    }
-
-    taskCount = uxTaskGetSystemState(taskStatusArray, taskCount, &totalRuntime);
-
-    for (UBaseType_t i = 0; i < taskCount; i++) {
-        const char* taskName = taskStatusArray[i].pcTaskName;
-        if (strstr(taskName, "IDLE") != NULL) {
-            idleRuntime += taskStatusArray[i].ulRunTimeCounter;
-        }
-    }
-
-    vPortFree(taskStatusArray);
-
-    if (totalRuntime == 0) {
-        return 85;
-    }
-
-    uint8_t idlePercent = (uint8_t)((idleRuntime * 100UL) / totalRuntime);
-    if (idlePercent > 100) {
-        idlePercent = 100;
-    }
-
-    return idlePercent;
-    */
+void ESP32SystemMetrics::instrumentLoop() {
+    /**
+     * Instruments the main loop for performance measurement.
+     *
+     * Call this method at the END of each main loop iteration.
+     * Increments loop counter and calculates frequency every 5 seconds.
+     *
+     * Performance: ~5 µs per call (< 0.1% overhead for typical 5ms loops)
+     * Constitutional compliance: FR-041 (loop iteration count measured)
+     */
+    _loopMonitor.endLoop();
 }
 
 unsigned long ESP32SystemMetrics::getMillis() {
@@ -97,6 +73,7 @@ ESP32SystemMetrics::~ESP32SystemMetrics() {}
 uint32_t ESP32SystemMetrics::getFreeHeapBytes() { return 250000; }
 uint32_t ESP32SystemMetrics::getSketchSizeBytes() { return 850000; }
 uint32_t ESP32SystemMetrics::getFreeFlashBytes() { return 1000000; }
-uint8_t ESP32SystemMetrics::getCpuIdlePercent() { return 87; }
+uint32_t ESP32SystemMetrics::getLoopFrequency() { return 212; }  // Typical value for tests
+void ESP32SystemMetrics::instrumentLoop() { _loopMonitor.endLoop(); }
 unsigned long ESP32SystemMetrics::getMillis() { return 0; }
 #endif

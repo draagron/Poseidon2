@@ -33,7 +33,7 @@ struct DisplayMetrics {
     uint32_t freeRamBytes;          ///< Free heap memory in bytes (ESP.getFreeHeap())
     uint32_t sketchSizeBytes;       ///< Uploaded code size in bytes (ESP.getSketchSize())
     uint32_t freeFlashBytes;        ///< Free flash space in bytes (ESP.getFreeSketchSpace())
-    uint8_t  cpuIdlePercent;        ///< CPU idle time 0-100% (FreeRTOS runtime stats)
+    uint32_t loopFrequency;         ///< Main loop frequency in Hz (0 = not yet measured, FR-042)
     uint8_t  animationState;        ///< Rotating icon state: 0=/, 1=-, 2=\, 3=|
     unsigned long lastUpdate;       ///< millis() timestamp of last metrics update
 };
