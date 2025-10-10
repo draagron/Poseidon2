@@ -428,6 +428,15 @@ void setup() {
         if (displayManager != nullptr) {
             displayManager->renderStatusPage();
         }
+
+        // R007: WebSocket loop frequency logging
+        if (systemMetrics != nullptr) {
+            uint32_t frequency = systemMetrics->getLoopFrequency();
+            LogLevel level = (frequency == 0 || frequency >= 200)
+                             ? LogLevel::DEBUG : LogLevel::WARN;
+            String data = String("{\"frequency\":") + frequency + "}";
+            logger.broadcastLog(level, "Performance", "LOOP_FREQUENCY", data);
+        }
     });
 
     // Log initialization complete
