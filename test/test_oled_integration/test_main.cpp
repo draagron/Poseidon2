@@ -30,6 +30,18 @@ void test_wifi_connecting_displays_timer();
 void test_animation_cycles_through_icons();
 void test_graceful_degradation_when_display_fails();
 
+// Bugfix-001 regression tests (WiFi status)
+void test_wifi_status_shows_ssid_when_connected();
+void test_wifi_status_shows_disconnected_when_not_connected();
+void test_wifi_status_clears_ssid_on_disconnect();
+void test_wifi_status_updates_internal_state_immediately();
+
+// Bugfix-001 regression tests (Animation icon)
+void test_animation_icon_has_no_brackets();
+void test_animation_icon_cursor_position_correct();
+void test_animation_cycles_through_states_without_brackets();
+void test_update_animation_icon_with_metrics_no_brackets();
+
 /**
  * @brief Set up test environment before each test
  */
@@ -64,6 +76,16 @@ int main(int argc, char **argv) {
     RUN_TEST(test_wifi_connecting_displays_timer);
     RUN_TEST(test_animation_cycles_through_icons);
     RUN_TEST(test_graceful_degradation_when_display_fails);
+
+    // Bugfix-001 regression tests
+    RUN_TEST(test_wifi_status_shows_ssid_when_connected);
+    RUN_TEST(test_wifi_status_shows_disconnected_when_not_connected);
+    RUN_TEST(test_wifi_status_clears_ssid_on_disconnect);
+    RUN_TEST(test_wifi_status_updates_internal_state_immediately);
+    RUN_TEST(test_animation_icon_has_no_brackets);
+    RUN_TEST(test_animation_icon_cursor_position_correct);
+    RUN_TEST(test_animation_cycles_through_states_without_brackets);
+    RUN_TEST(test_update_animation_icon_with_metrics_no_brackets);
 
     return UNITY_END();
 }

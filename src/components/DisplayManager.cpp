@@ -209,12 +209,10 @@ void DisplayManager::renderStatusPage(const SubsystemStatus& status) {
     _displayAdapter->print(buffer);
 
     // Line 5: Animation icon (right corner)
-    _displayAdapter->setCursor(108, getLineY(5));  // 128 - 20 pixels for "[ X ]"
-    _displayAdapter->print("[ ");
+    _displayAdapter->setCursor(118, getLineY(5));  // 128 - 10 pixels for " X " (bugfix-001)
     char icon = DisplayFormatter::getAnimationIcon(_currentMetrics.animationState);
     char iconStr[2] = {icon, '\0'};
     _displayAdapter->print(iconStr);
-    _displayAdapter->print(" ]");
 
     _displayAdapter->display();
 }
@@ -231,12 +229,10 @@ void DisplayManager::updateAnimationIcon(const DisplayMetrics& metrics) {
     // Render only the animation icon (partial update)
     // Note: Full clear and redraw is simpler for SSD1306
     // Optimization: Could just update the corner, but full refresh is <10ms
-    _displayAdapter->setCursor(108, getLineY(5));
-    _displayAdapter->print("[ ");
+    _displayAdapter->setCursor(118, getLineY(5));  // Bugfix-001: adjusted from 108 to 118
     char icon = DisplayFormatter::getAnimationIcon(metrics.animationState);
     char iconStr[2] = {icon, '\0'};
     _displayAdapter->print(iconStr);
-    _displayAdapter->print(" ]");
     _displayAdapter->display();
 }
 
@@ -246,4 +242,18 @@ void DisplayManager::updateAnimationIcon() {
 
     // Render using internal state
     updateAnimationIcon(_currentMetrics);
+}
+
+void DisplayManager::updateWiFiStatus(DisplayConnectionStatus status,
+                                     const char* ssid,
+                                     const char* ip) {
+    // Graceful degradation: skip if progressTracker not initialized
+    if (_progressTracker != nullptr) {
+        // Delegate to internal StartupProgressTracker
+        _progressTracker->updateWiFiStatus(status, ssid, ip);
+
+        // CRITICAL: Synchronize _currentStatus with progressTracker state
+        // This ensures renderStatusPage() uses updated WiFi info
+        _currentStatus = _progressTracker->getStatus();
+    }
 }
