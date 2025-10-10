@@ -53,4 +53,6 @@ $ARGUMENTS
    - Confirm the implementation follows the technical plan
    - Report final status with summary of completed work
 
+8. Update the CHANGELOG.md file with a summary of the changes implemented.
+
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/tasks` first to regenerate the task list.

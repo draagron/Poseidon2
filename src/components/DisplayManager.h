@@ -134,6 +134,22 @@ public:
     void updateAnimationIcon();
 
     /**
+     * @brief Update WiFi connection status
+     *
+     * Updates internal status for display rendering. Should be called
+     * when WiFi state changes (connected, disconnected, etc.).
+     *
+     * Bugfix-001: Added to sync WiFi state from event callbacks to DisplayManager.
+     *
+     * @param status New WiFi connection status
+     * @param ssid SSID of connected network (optional, nullptr to skip)
+     * @param ip IP address string (optional, nullptr to skip)
+     */
+    void updateWiFiStatus(DisplayConnectionStatus status,
+                         const char* ssid = nullptr,
+                         const char* ip = nullptr);
+
+    /**
      * @brief Get current metrics (for testing)
      *
      * @return Const reference to current DisplayMetrics

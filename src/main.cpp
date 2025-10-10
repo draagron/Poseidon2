@@ -101,6 +101,11 @@ void onWiFiConnected() {
     // Log connection success
     logger.logConnectionEvent(ConnectionEvent::CONNECTION_SUCCESS, ssid);
 
+    // T-BUGFIX-001: Update display with WiFi connection status
+    if (displayManager != nullptr) {
+        displayManager->updateWiFiStatus(CONN_CONNECTED, ssid.c_str(), ip.c_str());
+    }
+
     // Start web server if not already running
     if (webServer == nullptr) {
         webServer = new ConfigWebServer(wifiManager, &wifiConfig, &connectionState);
@@ -129,6 +134,11 @@ void onWiFiConnected() {
  */
 void onWiFiDisconnected() {
     wifiManager->handleDisconnect(connectionState);
+
+    // T-BUGFIX-001: Update display with WiFi disconnection
+    if (displayManager != nullptr) {
+        displayManager->updateWiFiStatus(CONN_DISCONNECTED);
+    }
 
     // Attempt to reconnect to same network
     app.onDelay(1000, [&]() {
