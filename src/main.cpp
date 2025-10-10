@@ -451,8 +451,7 @@ void loop() {
     // Process ReactESP events
     app.tick();
 
-    // Small delay to prevent watchdog issues
-    delay(10);
+
 }
 
 #endif // UNIT_TEST
