@@ -1,62 +1,80 @@
 ## FEATURE: Enhanced Boatdata 
 
 
-This feature adds some extra elements to the central data model for essential boat data. 
+This feature adds some extra elements to the central data model for essential boat data and it relocates other data elements. 
 
 
-### New Boat Data Elements
-  
-#### Compass Data 
-- double RateOfTurn;            // Radians/second - Rate of change of the heading
-- HeelAngle;              // Radians (+ = starboard, - = port), 
-- PitchAngle                // Radians (+ = bow up, - = bow down) 
-- Heave                     // 0.01 meters (1cm) - Vertical distance relative to the average sea level
+### Changes to existing data structures 
+
+Changes to some of the existing data structures. Changes are marked with tripple stars *** <<description>> ***
+ONLY THE CHANGED FIELDS or STRUCTURES ARE MENTIONED. NOT MENTIONED, MEANS NO CHANGE.
+
+// =============================================================================
+// SENSOR DATA STRUCTURES
+// =============================================================================
+
+/**
+ * @brief GPS sensor data
+ *
+ * Raw GPS data from NMEA0183/NMEA2000 sources.
+ * Units: decimal degrees, radians, knots
+ */
+struct GPSData {
+   
+    double variation;          ///< Magnetic variation, Radians, positive = East, negative = West  *** add, relocated from CompassData ***
+
+};
 
 
-// PGN 127250 - Vessel Heading (magnetic heading data)
-// PGN 127251 - Rate of Turn
-// PGN 127252 - Heave (vertical motion data)
-// PGN 127257 - Attitude (pitch, roll, and yaw orientation)
+struct CompassData {
+
+    double variation;          ///< Magnetic variation, Radians, positive = East, negative = West  *** Move to GPSData ***
+    
+    double RateOfTurn;          // radians/second - Rate of change of the heading.  *** Added ***
+    double HeelAngle;           // Radians (+ = starboard, - = port), *** RELOCATED FROM SpeedData,***
+    double PitchAngle           // Radians (+ = bow up, - = bow down) *** Added ***
+    double Heave                // Meters, Vertical distance relative to the average sea level *** Added ***
+
+};
 
 
-#### Engine (NMEA 2000)
+/**
+ * @brief DST sensor data (depth, speed, temperature)  *** UPDATED Name of Structure***
+ *
+ * Measured depth, water speed, temperature *** UPDATED ***
+ * Units: meters, m/s, celcius *** UPDATED ***
+ */
+struct DSTData { *** RENAME from SpeedData to DSTData - Depth, Speed, Temperature ***
+    double depth;              // meters, Depth below waterline   *** Added ***
+    double seaTemperature      // celcius, temperature of sea water *** Added ***
+    double heelAngle;          ///< radians, range [-PI/2, PI/2], positive = starboard, negative = port.  *** Relocate to CompassData; ***
+    double measuredBoatSpeed;  ///< MSB, m/s, from paddle wheel. *** Updated units ***
+
+};
+
+
+### New data structures: 
+
+#### EngineData (NMEA 2000)
 - double EngineRev
 - double OilTemperature
 - double AlternatorVoltage 
 
-#### Saildrive (via 1-wire)
+#### SaildriveData (via 1-wire)
 - bool SaildriveEngaged // true = engaged, false=disengaged
 
-#### Battery Banks (via 1-wire)
+#### BatteryData (via 1-wire)
 - VoltageA, AmperageA, StateOfChargeA, ShoreChargerOnA, EngineChargerOnA
 - VoltageB, AmperageB, StateOfChargeB, ShoreChargerOnB, EngineChargerOnB
 
-#### Shore Power (via 1-wire)
+#### ShorePowerData (via 1-wire)
 - bool ShorePowerOn // true = on, false = off
 - double Power // watt consumed
 
 
 
 
-#### Paddle Wheel Data (Raw Sensor Data) =====
-
-
-### Multiple Sources for same type of sensor data
-There will be multiple sources / sensors for the GPS data and the Compass data, some from NMEA0183 and some from NMEA2000. 
-
-The sources are prioritized, and only data from the highest priority source available will be used. If a higher priority source is not available, then the fall back is to use data from the next lower priority source. 
-
-The default prioritization scheme is to rank sources by frequency of update, i.e. a source updating 10 times per second, has higher priority than one updating on once per second. 
-
-There needs to be an interface for the user to override or fix the priority of the various sources, and this configuration must be persisted. 
-
-### Outlier detection and removal
-Sensor readings should be validated and invalid readings should be ignored. This includes readings that are clearly outliers. 
-
-
-
-
-
-
-
+## ONLY UPDATE THE BOATDATA STRUCTURES
+Do not implement functionality to acquire the sensor data from NMEA2000, NMEA0183 or 1-Wire. The data acquisition will be added separately later. 
+Do not implement any backward compatibility. Just need the code to reflect the current requirements. 
 

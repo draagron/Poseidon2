@@ -78,6 +78,19 @@ public:
     RudderData getRudderData() override;
     void setRudderData(const RudderData& data) override;
 
+    // === NEW in v2.0.0 ===
+    EngineData getEngineData();
+    void setEngineData(const EngineData& data);
+
+    SaildriveData getSaildriveData();
+    void setSaildriveData(const SaildriveData& data);
+
+    BatteryData getBatteryData();
+    void setBatteryData(const BatteryData& data);
+
+    ShorePowerData getShorePowerData();
+    void setShorePowerData(const ShorePowerData& data);
+
     DerivedData getDerivedData() override;
     void setDerivedData(const DerivedData& data) override;
 

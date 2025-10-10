@@ -130,6 +130,8 @@ Development activities SHALL use the appropriate workflow type based on the natu
 
 The wrong workflow SHALL NOT be used - features must not bypass specification, bugs must not skip regression tests, and refactorings must not alter behavior.
 
+### No Backward Compatibility Required
+When implementing new features, there should not be any bloating of specs or implementation for the sake of backward compatibility. The codebase should be kept as lean and clear as possible to fit the latest requirements only. 
 
 ## Technology Stack
 
