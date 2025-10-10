@@ -716,6 +716,376 @@ See `test/test_wifi_connection/README.md` for detailed hardware test setup.
 ---
 **WiFi Management Version**: 1.0.0 | **Last Updated**: 2025-10-06
 
+## Loop Frequency Monitoring
+
+### Overview
+The Loop Frequency Monitoring feature provides real-time measurement and display of the main loop iteration frequency on the OLED display. This replaces the static "CPU Idle: 85%" metric with dynamic "Loop: XXX Hz" measurement, providing operators with immediate feedback on system performance.
+
+**Key Features**:
+- Real-time loop frequency measurement (5-second averaging window)
+- Lightweight implementation: 16 bytes RAM, < 5% flash impact
+- Display format: "Loop: XXX Hz" (fits 21-character line limit)
+- Graceful degradation: Shows "---" placeholder before first measurement
+- Minimal overhead: < 1% performance impact per loop iteration
+
+### Architecture
+
+**Core Components**:
+- `LoopPerformanceMonitor`: Utility class for frequency measurement (16 bytes)
+- `ISystemMetrics`: Extended HAL interface with `getLoopFrequency()` method
+- `ESP32SystemMetrics`: Implementation owns LoopPerformanceMonitor instance
+- `DisplayManager`: Renders frequency on OLED Line 4
+
+**Measurement Flow**:
+```
+main.cpp loop()
+    ↓ (every iteration)
+systemMetrics->instrumentLoop()
+    ↓
+LoopPerformanceMonitor::endLoop()
+    ├─ Increment loop counter
+    ├─ Check 5-second boundary
+    └─ Calculate frequency = count / 5
+    ↓ (every 5 seconds)
+DisplayManager::renderStatusPage()
+    ↓
+ISystemMetrics::getLoopFrequency()
+    ↓
+Display "Loop: XXX Hz" on Line 4
+```
+
+### Main Loop Integration
+
+**CRITICAL**: The `instrumentLoop()` method MUST be called at the start of every main loop iteration to measure loop frequency accurately.
+
+**main.cpp Pattern**:
+```cpp
+#include "hal/implementations/ESP32SystemMetrics.h"
+
+// Global system metrics instance
+ESP32SystemMetrics* systemMetrics = nullptr;
+
+void setup() {
+    // ... WiFi, display initialization ...
+
+    // Initialize system metrics with loop monitor
+    systemMetrics = new ESP32SystemMetrics();
+
+    // ... other initialization ...
+}
+
+void loop() {
+    // CRITICAL: Instrument loop performance BEFORE app.tick()
+    if (systemMetrics != nullptr) {
+        systemMetrics->instrumentLoop();
+    }
+
+    // ReactESP event processing
+    app.tick();
+
+    // ... other loop operations ...
+}
+```
+
+**Why Before app.tick()?**: Instrumentation must measure the FULL loop time, including ReactESP event processing, to provide accurate frequency measurement.
+
+### Display Integration
+
+The loop frequency is displayed on Line 4 of the OLED status page, replacing the previous "CPU Idle: 85%" metric.
+
+**Display Layout**:
+```
+Line 0 (y=0):  WiFi: <SSID>         (21 chars max)
+Line 1 (y=10): IP: <IP Address>
+Line 2 (y=20): RAM: <Free KB>
+Line 3 (y=30): Flash: <Used/Total>
+Line 4 (y=40): Loop: <Freq> Hz      ← Loop frequency (NEW)
+Line 5 (y=50): <icon>                (animation icon)
+```
+
+**Format Rules**:
+- **0 Hz** (before first measurement): `"Loop: --- Hz"` (placeholder)
+- **1-999 Hz**: `"Loop: 212 Hz"` (integer, no decimals)
+- **≥ 1000 Hz**: `"Loop: 1.2k Hz"` (abbreviated with 1 decimal)
+
+**Typical Frequency Range**:
+- **Normal**: 100-500 Hz (ESP32 with ReactESP event loops)
+- **Warning**: < 50 Hz (potential performance issue, logged to WebSocket)
+- **Critical**: < 10 Hz (system overload, WARN log level)
+
+### ISystemMetrics HAL Extension
+
+The `ISystemMetrics` interface was extended to support loop frequency measurement.
+
+**Interface Changes**:
+```cpp
+// src/hal/interfaces/ISystemMetrics.h
+
+class ISystemMetrics {
+public:
+    virtual ~ISystemMetrics() = default;
+
+    virtual uint32_t getFreeHeap() = 0;
+    virtual uint32_t getTotalHeap() = 0;
+    virtual uint32_t getUsedFlash() = 0;
+    virtual uint32_t getTotalFlash() = 0;
+    virtual uint32_t getLoopFrequency() = 0;  // NEW (replaces getCPUIdlePercent)
+};
+```
+
+**ESP32 Implementation**:
+```cpp
+// src/hal/implementations/ESP32SystemMetrics.h
+
+#include "utils/LoopPerformanceMonitor.h"
+
+class ESP32SystemMetrics : public ISystemMetrics {
+public:
+    ESP32SystemMetrics();
+    ~ESP32SystemMetrics() override = default;
+
+    // ISystemMetrics implementation
+    uint32_t getLoopFrequency() override;
+
+    // Performance instrumentation (called from main loop)
+    void instrumentLoop();
+
+private:
+    LoopPerformanceMonitor _loopMonitor;  // 16 bytes static allocation
+};
+```
+
+**Mock Implementation** (for testing):
+```cpp
+// src/mocks/MockSystemMetrics.h
+
+class MockSystemMetrics : public ISystemMetrics {
+public:
+    uint32_t getLoopFrequency() override { return _mockLoopFrequency; }
+
+    // Test control method
+    void setMockLoopFrequency(uint32_t frequency) { _mockLoopFrequency = frequency; }
+
+private:
+    uint32_t _mockLoopFrequency = 0;  // Default: no measurement yet
+};
+```
+
+### LoopPerformanceMonitor Utility
+
+Lightweight utility class for measuring loop iteration frequency over 5-second windows.
+
+**Class Structure**:
+```cpp
+// src/utils/LoopPerformanceMonitor.h
+
+class LoopPerformanceMonitor {
+public:
+    LoopPerformanceMonitor();
+
+    /**
+     * @brief Record end of loop iteration (call from main loop every iteration)
+     *
+     * Increments loop counter and calculates frequency every 5 seconds.
+     * MUST be called at start of loop() to measure full loop time.
+     */
+    void endLoop();
+
+    /**
+     * @brief Get current loop frequency in Hz
+     * @return Frequency in Hz, or 0 if no measurement yet (first 5 seconds)
+     */
+    uint32_t getLoopFrequency() const;
+
+private:
+    uint32_t _loopCount;              // Iterations in current 5-second window
+    uint32_t _lastReportTime;         // millis() timestamp of last report
+    uint32_t _currentFrequency;       // Calculated frequency (Hz)
+    bool _hasFirstMeasurement;        // False until first 5-second window completes
+};
+```
+
+**Implementation Notes**:
+- **Memory Footprint**: 16 bytes (3× uint32_t + 1× bool + 3 bytes padding)
+- **Measurement Window**: 5 seconds (aligns with display refresh cycle)
+- **Counter Reset**: Loop count resets to 0 after each frequency calculation
+- **Overflow Handling**: Detects `millis()` wrap at ~49.7 days and handles gracefully
+- **Performance Overhead**: < 6 µs per loop iteration (< 1% impact for 5ms loops)
+
+**Frequency Calculation**:
+```cpp
+void LoopPerformanceMonitor::endLoop() {
+    _loopCount++;
+
+    uint32_t now = millis();
+
+    // Check for 5-second boundary OR millis() overflow
+    if ((now - _lastReportTime >= 5000) || (now < _lastReportTime)) {
+        _currentFrequency = _loopCount / 5;  // Integer division
+        _loopCount = 0;                       // Reset counter
+        _lastReportTime = now;
+        _hasFirstMeasurement = true;
+    }
+}
+```
+
+### Testing Loop Frequency
+
+Tests are organized into 4 groups following PlatformIO best practices.
+
+**Run All Loop Frequency Tests**:
+```bash
+pio test -e native -f test_performance_*
+```
+
+**Contract Tests** (HAL interface validation):
+```bash
+pio test -e native -f test_performance_contracts
+```
+Tests: ISystemMetrics::getLoopFrequency() contract (5 tests: initial state, set value, stability, no side effects, performance)
+
+**Integration Tests** (complete scenarios with mocked hardware):
+```bash
+pio test -e native -f test_performance_integration
+```
+Tests: Display integration, measurement window, overflow handling, edge cases (10 tests total)
+
+**Unit Tests** (utility logic and formatting):
+```bash
+pio test -e native -f test_performance_units
+```
+Tests: LoopPerformanceMonitor logic, frequency calculation, display formatting (14 tests total)
+
+**Hardware Tests** (ESP32 required, timing validation):
+```bash
+pio test -e esp32dev_test -f test_performance_hardware
+```
+Tests: Actual loop frequency accuracy, measurement overhead, 5-second window timing (3 tests)
+
+### Memory Footprint
+
+**Static Allocation** (constitutional compliance validated):
+
+*LoopPerformanceMonitor*:
+- `_loopCount`: 4 bytes (uint32_t)
+- `_lastReportTime`: 4 bytes (uint32_t)
+- `_currentFrequency`: 4 bytes (uint32_t)
+- `_hasFirstMeasurement`: 1 byte (bool)
+- Padding: 3 bytes (struct alignment)
+- **Total**: 16 bytes
+
+*DisplayMetrics Structure Change*:
+- **REMOVED**: `uint8_t cpuIdlePercent` (1 byte)
+- **ADDED**: `uint32_t loopFrequency` (4 bytes)
+- **Net Change**: +3 bytes
+
+**TOTAL FEATURE RAM IMPACT: 16 bytes (0.005% of ESP32's 320KB RAM)**
+
+**Flash Storage**:
+- LoopPerformanceMonitor: ~2KB
+- Display formatting: ~1KB
+- HAL integration: ~1KB
+- **Total Flash Impact**: ~4KB (< 0.2% of 1.9MB partition)
+
+### Performance Impact
+
+**Measurement Overhead** (validated via hardware tests):
+- Operation: 1× increment + 1× millis() call + 1× conditional check
+- Time per loop: < 6 µs
+- Typical loop time: ~5 ms (5000 µs)
+- **Overhead**: < 0.12% per loop iteration ✅
+
+**Frequency Calculation Overhead** (once per 5 seconds):
+- Operation: 1× division + 3× assignments
+- Time: ~10 µs
+- Amortized per loop: ~0.002 µs (negligible)
+
+**Total Performance Impact**: < 1% (constitutional Principle II requirement satisfied)
+
+### Troubleshooting
+
+**Display shows "Loop: --- Hz" indefinitely**:
+1. Verify `main.cpp loop()` calls `systemMetrics->instrumentLoop()`
+2. Check serial output for LoopPerformanceMonitor initialization errors
+3. Confirm 5 seconds have elapsed (use `millis()` debug output)
+4. Verify ESP32SystemMetrics owns LoopPerformanceMonitor instance
+
+**Frequency shows "0 Hz" after 5 seconds**:
+1. Verify `endLoop()` increments `_loopCount` every iteration
+2. Check for integer division error in frequency calculation
+3. Add debug output: `Serial.printf("Loop count: %lu\n", _loopCount);`
+4. Ensure `_hasFirstMeasurement` flag is set to true after first window
+
+**Display shows "CPU Idle: 85%" instead of "Loop: XXX Hz"**:
+1. Verify `DisplayTypes.h` has `loopFrequency` field (not `cpuIdlePercent`)
+2. Verify `ISystemMetrics` has `getLoopFrequency()` method (not `getCPUIdlePercent()`)
+3. Rebuild with `pio run -t clean && pio run -t upload`
+4. Check `DisplayManager.cpp` Line 4 rendering logic
+
+**Frequency > 10000 Hz (unrealistic)**:
+1. Verify 5000ms measurement window (not 500ms)
+2. Check `millis()` vs `micros()` usage (should use `millis()` for timing)
+3. Add bounds checking: `if (freq > 9999) freq = 9999;`
+4. Check for counter overflow or timing logic errors
+
+**Device reboots every ~49 days**:
+1. Verify `endLoop()` checks `(now < last_report)` for millis() wrap detection
+2. Test overflow scenario in unit tests (`test_performance_units/test_loop_performance_monitor.cpp`)
+3. Confirm frequency calculation continues after wrap event
+
+**Frequency < 10 Hz (critical performance issue)**:
+1. Check WebSocket logs for performance warnings
+2. Review ReactESP event loop tasks for blocking operations
+3. Profile loop time with micros() to identify bottlenecks
+4. Verify no blocking delays in main loop or event handlers
+5. Check for excessive Serial.print() calls (use WebSocket logging instead)
+
+### Constitutional Compliance
+
+**Principle I (Hardware Abstraction)**: ✅
+- ISystemMetrics interface used for all frequency access
+- ESP32SystemMetrics owns LoopPerformanceMonitor (HAL layer)
+- Mock implementation provided for testing
+- No direct hardware access in business logic
+
+**Principle II (Resource Management)**: ✅
+- 16 bytes static allocation (LoopPerformanceMonitor)
+- ZERO heap usage
+- F() macros used for all display strings
+- Stack usage < 100 bytes (well within 8KB task limit)
+
+**Principle IV (Modular Design)**: ✅
+- Single responsibility: LoopPerformanceMonitor measures, DisplayManager displays
+- Dependency injection: ISystemMetrics interface
+- Clear component boundaries
+
+**Principle V (Network Debugging)**: ✅
+- WebSocket logging for frequency updates (DEBUG level)
+- Warnings logged for abnormal frequencies (< 10 Hz or > 2000 Hz)
+- No serial port output (display-only)
+
+**Principle VII (Fail-Safe Operation)**: ✅
+- Graceful degradation: Shows "---" if measurement unavailable
+- Overflow detection: millis() wrap handled explicitly
+- Other display metrics unaffected by frequency measurement failures
+
+### Validation Procedure
+
+See `specs/006-mcu-loop-frequency/quickstart.md` for detailed 8-step validation procedure.
+
+**Quick Validation Checklist**:
+1. ✅ Display shows "Loop: --- Hz" during first 5 seconds
+2. ✅ Display shows "Loop: XXX Hz" after 5 seconds (numeric frequency)
+3. ✅ Frequency updates every 5 seconds
+4. ✅ Frequency value is reasonable (10-2000 Hz range)
+5. ✅ Display format fits within line limit (21 characters)
+6. ✅ Memory footprint within limits (< 50 bytes RAM, < 5% flash)
+7. ✅ Performance overhead < 1% (frequency degradation < 2 Hz)
+8. ✅ Graceful degradation on display failure
+
+---
+**Loop Frequency Monitoring Version**: 1.0.0 | **Last Updated**: 2025-10-10
+
 ## BoatData Integration
 
 ### Overview

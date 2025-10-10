@@ -42,7 +42,7 @@ private:
     uint32_t _freeHeapBytes;
     uint32_t _sketchSizeBytes;
     uint32_t _freeFlashBytes;
-    uint8_t _cpuIdlePercent;
+    uint32_t _loopFrequency;
     unsigned long _millis;
 
 public:
@@ -53,7 +53,7 @@ public:
         : _freeHeapBytes(250000),      // 244 KB free RAM (typical)
           _sketchSizeBytes(850000),    // 830 KB sketch size (typical)
           _freeFlashBytes(1000000),    // 976 KB free flash (typical)
-          _cpuIdlePercent(87),         // 87% idle (lightly loaded)
+          _loopFrequency(0),           // 0 Hz (not yet measured)
           _millis(0) {
     }
 
@@ -64,7 +64,7 @@ public:
         _freeHeapBytes = 250000;
         _sketchSizeBytes = 850000;
         _freeFlashBytes = 1000000;
-        _cpuIdlePercent = 87;
+        _loopFrequency = 0;
         _millis = 0;
     }
 
@@ -95,11 +95,11 @@ public:
     }
 
     /**
-     * @brief Set CPU idle percentage
-     * @param percent Idle percentage (0-100)
+     * @brief Set mock loop frequency
+     * @param frequency Loop frequency in Hz (0 = not yet measured)
      */
-    void setCpuIdlePercent(uint8_t percent) {
-        _cpuIdlePercent = percent;
+    void setMockLoopFrequency(uint32_t frequency) {
+        _loopFrequency = frequency;
     }
 
     /**
@@ -132,8 +132,8 @@ public:
         return _freeFlashBytes;
     }
 
-    uint8_t getCpuIdlePercent() override {
-        return _cpuIdlePercent;
+    uint32_t getLoopFrequency() override {
+        return _loopFrequency;
     }
 
     unsigned long getMillis() override {

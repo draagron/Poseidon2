@@ -19,6 +19,7 @@
 #define ESP32_SYSTEM_METRICS_H
 
 #include "hal/interfaces/ISystemMetrics.h"
+#include "utils/LoopPerformanceMonitor.h"
 
 /**
  * @brief ESP32 hardware implementation of ISystemMetrics
@@ -27,7 +28,7 @@
  * - ESP.getFreeHeap() for RAM
  * - ESP.getSketchSize() for code size
  * - ESP.getFreeSketchSpace() for free flash
- * - FreeRTOS uxTaskGetSystemState() for CPU idle %
+ * - LoopPerformanceMonitor for main loop frequency
  * - millis() for timestamp
  */
 class ESP32SystemMetrics : public ISystemMetrics {
@@ -46,8 +47,24 @@ public:
     uint32_t getFreeHeapBytes() override;
     uint32_t getSketchSizeBytes() override;
     uint32_t getFreeFlashBytes() override;
-    uint8_t getCpuIdlePercent() override;
+    uint32_t getLoopFrequency() override;
     unsigned long getMillis() override;
+
+    /**
+     * @brief Instruments the main loop for performance measurement
+     *
+     * Call this method at the END of each main loop iteration.
+     * Delegates to internal LoopPerformanceMonitor for frequency calculation.
+     *
+     * Performance: ~5 µs per call (< 0.1% overhead for typical 5ms loops)
+     *
+     * @note Must be called every loop iteration for accurate frequency measurement
+     * @note Call from main.cpp loop() function only (not thread-safe)
+     */
+    void instrumentLoop();
+
+private:
+    LoopPerformanceMonitor _loopMonitor;  ///< Performance monitoring utility (16 bytes)
 };
 
 #endif // ESP32_SYSTEM_METRICS_H

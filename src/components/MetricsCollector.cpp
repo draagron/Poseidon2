@@ -22,7 +22,7 @@ void MetricsCollector::collectMetrics(DisplayMetrics* metrics) {
     metrics->freeRamBytes = _systemMetrics->getFreeHeapBytes();
     metrics->sketchSizeBytes = _systemMetrics->getSketchSizeBytes();
     metrics->freeFlashBytes = _systemMetrics->getFreeFlashBytes();
-    metrics->cpuIdlePercent = _systemMetrics->getCpuIdlePercent();
+    metrics->loopFrequency = _systemMetrics->getLoopFrequency();
 
     // Update timestamp
     metrics->lastUpdate = _systemMetrics->getMillis();

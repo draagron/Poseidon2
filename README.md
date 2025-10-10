@@ -38,6 +38,7 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
 - ✅ **Hardware Abstraction**: Testable via mocks (HAL pattern)
 - ✅ **ReactESP**: Event-driven architecture for responsive operation
 - ✅ **OLED Display**: Real-time system status and diagnostics on 128x64 SSD1306
+- ✅ **Loop Frequency Monitoring**: Real-time main loop frequency measurement (5-second averaging)
 - 🚧 **SD Card Logging**: Optional data recording
 
 ## Hardware Requirements
@@ -275,7 +276,7 @@ Shows subsystem initialization progress:
 - **Line 1**: IP address (e.g., "192.168.1.100")
 - **Line 2**: Free RAM (e.g., "RAM: 244KB")
 - **Line 3**: Flash usage (e.g., "Flash: 830/1920KB")
-- **Line 4**: CPU idle percentage (e.g., "CPU Idle: 85%")
+- **Line 4**: Loop frequency (e.g., "Loop: 212 Hz") - Real-time main loop measurement
 - **Line 5**: Rotating animation icon (/, -, \, |)
 
 ### Display Updates
@@ -592,7 +593,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management | ✅ OLED Display | 🚧 Marine Protocols In Progress
+**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | 🚧 Marine Protocols In Progress
 
-**Last Updated**: 2025-10-09
-**Version**: 1.1.0 (WiFi Management + OLED Display)
+**Last Updated**: 2025-10-10
+**Version**: 1.2.0 (WiFi Management + OLED Display + Loop Frequency Monitoring)

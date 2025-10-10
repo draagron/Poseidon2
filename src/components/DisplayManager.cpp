@@ -21,7 +21,7 @@ DisplayManager::DisplayManager(IDisplayAdapter* displayAdapter, ISystemMetrics* 
     _currentMetrics.freeRamBytes = 0;
     _currentMetrics.sketchSizeBytes = 0;
     _currentMetrics.freeFlashBytes = 0;
-    _currentMetrics.cpuIdlePercent = 100;
+    _currentMetrics.loopFrequency = 0;
     _currentMetrics.animationState = 0;
     _currentMetrics.lastUpdate = 0;
 
@@ -202,11 +202,12 @@ void DisplayManager::renderStatusPage(const SubsystemStatus& status) {
     DisplayFormatter::formatFlashUsage(_currentMetrics.sketchSizeBytes, totalFlash, buffer);
     _displayAdapter->print(buffer);
 
-    // Line 4: CPU idle
+    // Line 4: Loop frequency
     _displayAdapter->setCursor(0, getLineY(4));
-    _displayAdapter->print("CPU Idle: ");
-    DisplayFormatter::formatPercent(_currentMetrics.cpuIdlePercent, buffer);
+    _displayAdapter->print("Loop: ");
+    DisplayFormatter::formatFrequency(_currentMetrics.loopFrequency, buffer);
     _displayAdapter->print(buffer);
+    _displayAdapter->print(" Hz");
 
     // Line 5: Animation icon (right corner)
     _displayAdapter->setCursor(118, getLineY(5));  // 128 - 10 pixels for " X " (bugfix-001)

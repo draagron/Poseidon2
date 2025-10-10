@@ -107,6 +107,27 @@ public:
     static char getAnimationIcon(uint8_t state) {
         return ::getAnimationIcon(state);  // Call inline function
     }
+
+    /**
+     * @brief Format loop frequency as string
+     *
+     * Formats loop frequency with appropriate abbreviation:
+     * - 0 Hz → "---" (placeholder before first measurement)
+     * - 1-999 Hz → "XXX" (integer display, no decimals)
+     * - ≥1000 Hz → "X.Xk" (abbreviated kilohertз with 1 decimal)
+     *
+     * Examples:
+     * - formatFrequency(0) → "---"
+     * - formatFrequency(5) → "5"
+     * - formatFrequency(212) → "212"
+     * - formatFrequency(1500) → "1.5k"
+     *
+     * @param frequency Loop frequency in Hz
+     * @param buffer Output buffer (must be at least 8 chars for "X.XXk Hz")
+     *
+     * Constitutional compliance: FR-045 (integer display unless >999 Hz)
+     */
+    static void formatFrequency(uint32_t frequency, char* buffer);
 };
 
 #endif // DISPLAY_FORMATTER_H
