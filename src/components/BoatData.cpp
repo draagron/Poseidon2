@@ -47,11 +47,11 @@ void BoatData::setWindData(const WindData& windData) {
 }
 
 SpeedData BoatData::getSpeedData() {
-    return data.speed;
+    return data.dst;  // Updated for v2.0.0: SpeedData renamed to DSTData
 }
 
 void BoatData::setSpeedData(const SpeedData& speedData) {
-    data.speed = speedData;
+    data.dst = speedData;  // Updated for v2.0.0: SpeedData renamed to DSTData
 }
 
 RudderData BoatData::getRudderData() {
@@ -76,6 +76,40 @@ CalibrationData BoatData::getCalibration() {
 
 void BoatData::setCalibration(const CalibrationData& calibrationData) {
     data.calibration = calibrationData;
+}
+
+// === NEW in v2.0.0 - Enhanced BoatData structures ===
+
+EngineData BoatData::getEngineData() {
+    return data.engine;
+}
+
+void BoatData::setEngineData(const EngineData& engineData) {
+    data.engine = engineData;
+}
+
+SaildriveData BoatData::getSaildriveData() {
+    return data.saildrive;
+}
+
+void BoatData::setSaildriveData(const SaildriveData& saildriveData) {
+    data.saildrive = saildriveData;
+}
+
+BatteryData BoatData::getBatteryData() {
+    return data.battery;
+}
+
+void BoatData::setBatteryData(const BatteryData& batteryData) {
+    data.battery = batteryData;
+}
+
+ShorePowerData BoatData::getShorePowerData() {
+    return data.shorePower;
+}
+
+void BoatData::setShorePowerData(const ShorePowerData& shorePowerData) {
+    data.shorePower = shorePowerData;
 }
 
 // =============================================================================
@@ -147,23 +181,25 @@ bool BoatData::updateSpeed(double heelAngle, double boatSpeed, const char* sourc
     }
 
     // Rate-of-change validation (if previous data exists)
-    if (data.speed.available && data.speed.lastUpdate > 0) {
-        unsigned long deltaTime = millis() - data.speed.lastUpdate;
+    // NOTE v2.0.0: heelAngle moved to CompassData, but validation still uses old logic for backward compatibility
+    if (data.dst.available && data.dst.lastUpdate > 0) {
+        unsigned long deltaTime = millis() - data.dst.lastUpdate;
 
-        if (!DataValidator::isValidHeelRateOfChange(data.speed.heelAngle, heelAngle, deltaTime)) {
+        if (!DataValidator::isValidHeelRateOfChange(data.compass.heelAngle, heelAngle, deltaTime)) {
             return false;
         }
 
-        if (!DataValidator::isValidSpeedRateOfChange(data.speed.measuredBoatSpeed, boatSpeed, deltaTime, 5.0)) {
+        if (!DataValidator::isValidSpeedRateOfChange(data.dst.measuredBoatSpeed, boatSpeed, deltaTime, 5.0)) {
             return false;
         }
     }
 
     // Accept and store
-    data.speed.heelAngle = heelAngle;
-    data.speed.measuredBoatSpeed = boatSpeed;
-    data.speed.available = true;
-    data.speed.lastUpdate = millis();
+    // NOTE v2.0.0: heelAngle now stored in CompassData, boatSpeed stored in DSTData
+    data.compass.heelAngle = heelAngle;
+    data.dst.measuredBoatSpeed = boatSpeed;
+    data.dst.available = true;
+    data.dst.lastUpdate = millis();
 
     return true;
 }
@@ -283,7 +319,8 @@ bool BoatData::validateAndUpdateCompass(double trueHdg, double magHdg, double va
     // Accept and store
     data.compass.trueHeading = trueHdg;
     data.compass.magneticHeading = magHdg;
-    data.compass.variation = variation;
+    // NOTE v2.0.0: variation moved to GPSData
+    data.gps.variation = variation;
     data.compass.available = true;
     data.compass.lastUpdate = millis();
 

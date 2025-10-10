@@ -13,7 +13,7 @@ void CalculationEngine::calculate(BoatDataStructure* boatData) {
     if (!boatData->gps.available ||
         !boatData->compass.available ||
         !boatData->wind.available ||
-        !boatData->speed.available) {
+        !boatData->dst.available) {  // Updated for v2.0.0: speed → dst
         // Insufficient data - mark derived as unavailable
         boatData->derived.available = false;
         return;
@@ -26,10 +26,10 @@ void CalculationEngine::calculate(BoatDataStructure* boatData) {
     // Extract sensor data
     double awa = boatData->wind.apparentWindAngle;
     double aws = boatData->wind.apparentWindSpeed;
-    double heel = boatData->speed.heelAngle;
-    double boatSpeed = boatData->speed.measuredBoatSpeed;
+    double heel = boatData->compass.heelAngle;  // Updated for v2.0.0: moved to CompassData
+    double boatSpeed = boatData->dst.measuredBoatSpeed;  // Updated for v2.0.0: speed → dst
     double heading = boatData->compass.magneticHeading;
-    double variation = boatData->compass.variation;
+    double variation = boatData->gps.variation;  // Updated for v2.0.0: moved to GPSData
     double sog = boatData->gps.sog;
     double cog = boatData->gps.cog;
 

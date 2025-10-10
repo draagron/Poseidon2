@@ -27,10 +27,19 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
 - ✅ **Independent Services**: Non-blocking initialization (services run without WiFi)
 
 ### Marine Protocols
-- 🚧 **NMEA 2000** (CAN bus): Bidirectional message handling
+- ✅ **Enhanced BoatData (R005)**: Comprehensive marine sensor data structures
+  - GPS variation, compass motion sensors (rate of turn, heel, pitch, heave)
+  - DST sensors (Depth/Speed/Temperature)
+  - Engine telemetry (RPM, oil temp, alternator voltage)
+  - Saildrive engagement status (1-wire)
+  - Dual battery bank monitoring (1-wire)
+  - Shore power monitoring (1-wire)
+  - 8 NMEA2000 PGN handlers with validation
+  - Memory footprint: ~560 bytes BoatData structure
+- 🚧 **NMEA 2000** (CAN bus): PGN handlers ready, awaiting bus initialization
 - 🚧 **NMEA 0183** (Serial): Read-only sentence parsing
 - 🚧 **SignalK Integration**: Real-time data streaming
-- 🚧 **1-Wire Sensors**: Temperature, humidity monitoring
+- ✅ **1-Wire Sensors**: Marine sensor interface (saildrive, battery, shore power)
 
 ### System Features
 - ✅ **Always-On Operation**: No sleep modes, 24/7 uptime
@@ -392,7 +401,7 @@ Poseidon2/
 │   ├── test_boatdata_contracts/         # BoatData HAL contract tests (native)
 │   ├── test_boatdata_integration/       # BoatData integration tests (native)
 │   ├── test_boatdata_units/             # BoatData unit tests (native)
-│   ├── test_boatdata_timing/            # BoatData timing tests (ESP32)
+│   ├── test_boatdata_hardware/          # BoatData hardware tests (ESP32)
 │   ├── test_oled_contracts/             # OLED HAL contract tests (native)
 │   ├── test_oled_integration/           # OLED integration tests (native)
 │   ├── test_oled_units/                 # OLED unit tests (native)
@@ -403,12 +412,14 @@ Poseidon2/
 │   ├── 002-create-feature-spec/         # (deprecated)
 │   ├── 003-boatdata-feature-as/         # BoatData feature spec
 │   ├── 004-removal-of-udp/              # UDP removal documentation
-│   └── 005-oled-basic-info/             # OLED display feature spec
+│   ├── 005-oled-basic-info/             # OLED display feature spec
+│   └── 008-enhanced-boatdata-following/ # Enhanced BoatData spec (R005)
 ├── user_requirements/                   # User requirements
 │   ├── R001 - foundation.md             # Core requirements
 │   ├── R002 - boatdata.md               # BoatData requirements
 │   ├── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
-│   └── R004 - OLED basic info.md        # OLED display requirements
+│   ├── R004 - OLED basic info.md        # OLED display requirements
+│   └── R005 - enhanced boatdata.md      # Enhanced BoatData requirements
 ├── .specify/                            # Development framework
 │   ├── memory/
 │   │   └── constitution.md              # Development principles (v1.2.0)
@@ -549,10 +560,11 @@ pio run -t uploadfs
 
 ### Memory Footprint
 - **WiFi Config**: ~334 bytes RAM (3 networks)
-- **BoatData**: ~1,128 bytes RAM (static allocation)
+- **BoatData v2.0**: ~560 bytes RAM (enhanced structures, static allocation)
 - **OLED Display**: ~1.1 KB RAM (97 bytes + 1KB framebuffer)
+- **1-Wire Sensors**: ~150 bytes RAM (event loop overhead)
 - **Flash Storage**: ~200 bytes (config files)
-- **Code Size**: ~924 KB flash (47% of 1.9 MB partition)
+- **Code Size**: ~938 KB flash (47.7% of 1.9 MB partition)
 - **RAM Usage**: ~44 KB (13.5% of 320 KB)
 
 ### Timing Benchmarks
@@ -593,7 +605,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | 🚧 Marine Protocols In Progress
+**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ Enhanced BoatData (R005) | 🚧 NMEA2000 Bus Initialization Pending
 
 **Last Updated**: 2025-10-10
-**Version**: 1.2.0 (WiFi Management + OLED Display + Loop Frequency Monitoring)
+**Version**: 2.0.0 (WiFi + OLED + Loop Frequency + Enhanced BoatData)

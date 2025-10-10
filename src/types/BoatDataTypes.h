@@ -7,13 +7,22 @@
  *
  * Units:
  * - Angles: radians (except where noted)
- * - Speeds: knots
+ * - Speeds: knots (GPS/wind), m/s (DST paddle wheel)
  * - Coordinates: decimal degrees
  * - Time: milliseconds (millis())
  *
- * @see specs/003-boatdata-feature-as/data-model.md
- * @version 1.0.0
- * @date 2025-10-06
+ * Changes from v1.0.0:
+ * - GPSData: Added variation field (moved from CompassData)
+ * - CompassData: Added rateOfTurn, heelAngle, pitchAngle, heave; removed variation
+ * - SpeedData renamed to DSTData with added depth and seaTemperature fields
+ * - NEW: EngineData structure
+ * - NEW: SaildriveData structure
+ * - NEW: BatteryData structure
+ * - NEW: ShorePowerData structure
+ *
+ * @see specs/008-enhanced-boatdata-following/data-model.md
+ * @version 2.0.0
+ * @date 2025-10-10
  */
 
 #ifndef BOATDATA_TYPES_H
@@ -49,30 +58,44 @@ enum class ProtocolType : uint8_t {
 // =============================================================================
 
 /**
- * @brief GPS sensor data
+ * @brief GPS sensor data (ENHANCED from v1.0.0)
  *
  * Raw GPS data from NMEA0183/NMEA2000 sources.
  * Units: decimal degrees, radians, knots
+ *
+ * CHANGES v2.0.0:
+ * - ADDED: double variation (magnetic variation from GPS)
  */
 struct GPSData {
     double latitude;           ///< Decimal degrees, positive = North, range [-90, 90]
     double longitude;          ///< Decimal degrees, positive = East, range [-180, 180]
     double cog;                ///< Course over ground, radians, range [0, 2π], true
     double sog;                ///< Speed over ground, knots, range [0, 100]
+    double variation;          ///< Magnetic variation, radians, positive = East, negative = West (ADDED v2.0.0)
     bool available;            ///< Data validity flag
     unsigned long lastUpdate;  ///< millis() timestamp of last update
 };
 
 /**
- * @brief Compass sensor data
+ * @brief Compass sensor data (ENHANCED from v1.0.0)
  *
- * Heading and magnetic variation data.
- * Units: radians
+ * Heading and attitude data from compass/AHRS sensors.
+ * Units: radians, meters
+ *
+ * CHANGES v2.0.0:
+ * - REMOVED: double variation (moved to GPSData)
+ * - ADDED: double rateOfTurn (radians/second)
+ * - ADDED: double heelAngle (moved from SpeedData/DSTData)
+ * - ADDED: double pitchAngle (radians)
+ * - ADDED: double heave (meters)
  */
 struct CompassData {
     double trueHeading;        ///< Radians, range [0, 2π]
     double magneticHeading;    ///< Radians, range [0, 2π]
-    double variation;          ///< Magnetic variation, radians, positive = East, negative = West
+    double rateOfTurn;         ///< Radians/second, positive = turning right (ADDED v2.0.0)
+    double heelAngle;          ///< Radians, range [-π/2, π/2], positive = starboard (ADDED v2.0.0)
+    double pitchAngle;         ///< Radians, range [-π/6, π/6], positive = bow up (ADDED v2.0.0)
+    double heave;              ///< Meters, range [-5.0, 5.0], positive = upward (ADDED v2.0.0)
     bool available;            ///< Data validity flag
     unsigned long lastUpdate;  ///< millis() timestamp of last update
 };
@@ -91,26 +114,99 @@ struct WindData {
 };
 
 /**
- * @brief Speed sensor data (paddle wheel and heel)
+ * @brief DST sensor data (RENAMED from SpeedData, ENHANCED)
  *
- * Measured boat speed and heel angle.
- * Units: radians, knots
+ * Depth, Speed, Temperature (DST triducer) sensor data.
+ * Units: meters, m/s, Celsius
+ *
+ * CHANGES v2.0.0:
+ * - RENAMED: SpeedData → DSTData
+ * - REMOVED: double heelAngle (moved to CompassData)
+ * - ADDED: double depth (meters)
+ * - ADDED: double seaTemperature (Celsius)
+ * - KEPT: double measuredBoatSpeed (changed from knots to m/s)
  */
-struct SpeedData {
-    double heelAngle;          ///< Radians, range [-π/2, π/2], positive = starboard, negative = port
-    double measuredBoatSpeed;  ///< MSB, knots, from paddle wheel, range [0, 50]
+struct DSTData {
+    double depth;              ///< Depth below waterline, meters, range [0, 100] (ADDED v2.0.0)
+    double measuredBoatSpeed;  ///< Speed through water, m/s, range [0, 25] (changed from knots)
+    double seaTemperature;     ///< Water temperature, Celsius, range [-10, 50] (ADDED v2.0.0)
     bool available;            ///< Data validity flag
     unsigned long lastUpdate;  ///< millis() timestamp of last update
 };
 
 /**
- * @brief Rudder sensor data
+ * @brief Rudder sensor data (unchanged from v1.0.0)
  *
  * Steering angle from rudder position sensor.
  * Units: radians
  */
 struct RudderData {
     double steeringAngle;      ///< Radians, range [-π/2, π/2], positive = starboard, negative = port
+    bool available;            ///< Data validity flag
+    unsigned long lastUpdate;  ///< millis() timestamp of last update
+};
+
+/**
+ * @brief Engine telemetry data (NEW in v2.0.0)
+ *
+ * Engine performance and status data from NMEA2000.
+ * Units: RPM, Celsius, volts
+ */
+struct EngineData {
+    double engineRev;          ///< Engine RPM, range [0, 6000]
+    double oilTemperature;     ///< Oil temperature, Celsius, range [-10, 150]
+    double alternatorVoltage;  ///< Alternator output, volts, range [0, 30]
+    bool available;            ///< Data validity flag
+    unsigned long lastUpdate;  ///< millis() timestamp of last update
+};
+
+/**
+ * @brief Saildrive engagement status (NEW in v2.0.0)
+ *
+ * Saildrive position sensor data from 1-wire bus.
+ * Units: boolean
+ */
+struct SaildriveData {
+    bool saildriveEngaged;     ///< true = deployed/engaged, false = retracted/disengaged
+    bool available;            ///< Data validity flag (sensor responding)
+    unsigned long lastUpdate;  ///< millis() timestamp of last update
+};
+
+/**
+ * @brief Dual battery bank monitoring (NEW in v2.0.0)
+ *
+ * Battery status from 1-wire analog sensors or NMEA2000.
+ * Units: volts, amperes, percent
+ */
+struct BatteryData {
+    // Battery A (House Bank)
+    double voltageA;           ///< Volts, range [0, 30]
+    double amperageA;          ///< Amperes, range [-200, 200], positive = charging
+    double stateOfChargeA;     ///< Percent, range [0.0, 100.0]
+    bool shoreChargerOnA;      ///< true = shore charger active for Battery A
+    bool engineChargerOnA;     ///< true = alternator charging Battery A
+
+    // Battery B (Starter Bank)
+    double voltageB;           ///< Volts, range [0, 30]
+    double amperageB;          ///< Amperes, range [-200, 200], positive = charging
+    double stateOfChargeB;     ///< Percent, range [0.0, 100.0]
+    bool shoreChargerOnB;      ///< true = shore charger active for Battery B
+    bool engineChargerOnB;     ///< true = alternator charging Battery B
+
+    // Metadata
+    bool available;            ///< Data validity flag
+    unsigned long lastUpdate;  ///< millis() timestamp of last update
+};
+
+/**
+ * @brief Shore power connection and consumption (NEW in v2.0.0)
+ *
+ * Shore power status from 1-wire sensors.
+ * Units: boolean, watts
+ */
+struct ShorePowerData {
+    bool shorePowerOn;         ///< true = shore power connected and available
+    double power;              ///< Shore power draw, watts, range [0, 5000]
     bool available;            ///< Data validity flag
     unsigned long lastUpdate;  ///< millis() timestamp of last update
 };
@@ -195,23 +291,34 @@ struct DiagnosticData {
 // =============================================================================
 
 /**
- * @brief Central boat data repository structure
+ * @brief Central boat data repository structure (v2.0.0)
  *
  * Statically allocated structure containing all sensor data,
  * derived parameters, calibration, and diagnostics.
  *
  * Thread safety: Single-threaded (ReactESP event loop)
- * Memory footprint: ~304 bytes (negligible for ESP32)
+ * Memory footprint: ~560 bytes (up from ~304 bytes in v1.0.0)
+ *
+ * CHANGES v2.0.0:
+ * - RENAMED: SpeedData speed → DSTData dst
+ * - ADDED: EngineData engine
+ * - ADDED: SaildriveData saildrive
+ * - ADDED: BatteryData battery
+ * - ADDED: ShorePowerData shorePower
  */
 struct BoatDataStructure {
-    GPSData gps;               ///< GPS sensor data
-    CompassData compass;       ///< Compass sensor data
-    WindData wind;             ///< Wind vane sensor data
-    SpeedData speed;           ///< Speed/heel sensor data
-    RudderData rudder;         ///< Rudder position sensor data
-    CalibrationData calibration;  ///< Calibration parameters
-    DerivedData derived;       ///< Calculated sailing parameters
-    DiagnosticData diagnostics;   ///< Diagnostic counters
+    GPSData gps;                   ///< GPS sensor data (enhanced with variation)
+    CompassData compass;           ///< Compass sensor data (enhanced with attitude)
+    WindData wind;                 ///< Wind vane sensor data (unchanged)
+    DSTData dst;                   ///< Depth/Speed/Temperature (replaces SpeedData)
+    RudderData rudder;             ///< Rudder position sensor data (unchanged)
+    EngineData engine;             ///< Engine telemetry (NEW)
+    SaildriveData saildrive;       ///< Saildrive status (NEW)
+    BatteryData battery;           ///< Dual battery monitoring (NEW)
+    ShorePowerData shorePower;     ///< Shore power status (NEW)
+    CalibrationData calibration;   ///< Calibration parameters (unchanged)
+    DerivedData derived;           ///< Calculated sailing parameters (unchanged)
+    DiagnosticData diagnostics;    ///< Diagnostic counters (unchanged)
 };
 
 // =============================================================================
@@ -294,5 +401,20 @@ struct CalibrationParameters {
     unsigned long lastModified;      ///< Unix timestamp of last update
     bool valid;                      ///< True if loaded from flash successfully
 };
+
+// =============================================================================
+// BACKWARD COMPATIBILITY (temporary during migration)
+// =============================================================================
+
+/**
+ * @brief Temporary typedef for backward compatibility
+ *
+ * Allows legacy code to compile during migration phase.
+ * DEPRECATED: Will be removed in v2.1.0
+ *
+ * Usage: Code referencing SpeedData will automatically use DSTData.
+ * WARNING: heelAngle field moved to CompassData - migration required.
+ */
+typedef DSTData SpeedData;
 
 #endif // BOATDATA_TYPES_H
