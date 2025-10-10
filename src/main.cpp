@@ -21,6 +21,8 @@
 // HAL implementations
 #include "hal/implementations/ESP32WiFiAdapter.h"
 #include "hal/implementations/LittleFSAdapter.h"
+#include "hal/implementations/ESP32DisplayAdapter.h"
+#include "hal/implementations/ESP32SystemMetrics.h"
 
 // Components
 #include "components/WiFiManager.h"
@@ -32,6 +34,7 @@
 #include "components/SourcePrioritizer.h"
 #include "components/CalibrationManager.h"
 #include "components/CalibrationWebServer.h"
+#include "components/DisplayManager.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -68,6 +71,11 @@ BoatData* boatData = nullptr;
 CalculationEngine* calculationEngine = nullptr;
 CalibrationManager* calibrationManager = nullptr;
 CalibrationWebServer* calibrationWebServer = nullptr;
+
+// Display components (T027)
+ESP32DisplayAdapter* displayAdapter = nullptr;
+ESP32SystemMetrics* systemMetrics = nullptr;
+DisplayManager* displayManager = nullptr;
 
 // Reboot management
 bool rebootScheduled = false;
@@ -369,6 +377,23 @@ void setup() {
         wifiManager->connect(connectionState, wifiConfig);
     }
 
+    // T027: OLED Display initialization (after WiFi, before NMEA)
+    Serial.println(F("Initializing OLED display..."));
+    displayAdapter = new ESP32DisplayAdapter();
+    systemMetrics = new ESP32SystemMetrics();
+    displayManager = new DisplayManager(displayAdapter, systemMetrics, &logger);
+
+    if (displayManager->init()) {
+        Serial.println(F("OLED display initialized successfully"));
+        logger.broadcastLog(LogLevel::INFO, "Main", "DISPLAY_INIT_SUCCESS",
+                            F("{\"device\":\"SSD1306\",\"resolution\":\"128x64\"}"));
+    } else {
+        Serial.println(F("WARNING: OLED display initialization failed"));
+        logger.broadcastLog(LogLevel::ERROR, "Main", "DISPLAY_INIT_FAILED",
+                            F("{\"reason\":\"I2C communication error - continuing without display\"}"));
+        // Graceful degradation: Continue operation without display (FR-027)
+    }
+
     // T046: ReactESP loop integration
     // Periodic timeout check every 1 second
     app.onRepeat(1000, checkConnectionTimeout);
@@ -381,6 +406,19 @@ void setup() {
 
     // T038: Calculation cycle every 200ms (5 Hz)
     app.onRepeat(200, calculateDerivedParameters);
+
+    // T028: Display refresh loops - 1s animation, 5s status
+    app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {
+        if (displayManager != nullptr) {
+            displayManager->updateAnimationIcon();
+        }
+    });
+
+    app.onRepeat(DISPLAY_STATUS_INTERVAL_MS, []() {
+        if (displayManager != nullptr) {
+            displayManager->renderStatusPage();
+        }
+    });
 
     // Log initialization complete
     Serial.println(F("Setup complete - entering main loop"));

@@ -20,4 +20,14 @@
 // Reboot Configuration
 #define REBOOT_DELAY_MS 5000         // 5 seconds delay before reboot
 
+// OLED Display Configuration
+#define OLED_I2C_ADDRESS 0x3C        // I2C address for SSD1306 OLED (128x64)
+#define OLED_SCREEN_WIDTH 128        // Display width in pixels
+#define OLED_SCREEN_HEIGHT 64        // Display height in pixels
+#define OLED_SDA_PIN 21              // GPIO21 for I2C Bus 2 SDA
+#define OLED_SCL_PIN 22              // GPIO22 for I2C Bus 2 SCL
+#define OLED_I2C_CLOCK 400000        // 400kHz I2C fast mode
+#define DISPLAY_ANIMATION_INTERVAL_MS 1000  // 1 second animation icon update
+#define DISPLAY_STATUS_INTERVAL_MS 5000     // 5 seconds status refresh
+
 #endif // CONFIG_H
