@@ -228,6 +228,297 @@ The reference implementation (`examples/poseidongw/`) demonstrates the required 
 - Designed for 24/7 operation with continuous network availability
 - Watchdog timer enabled in production builds
 
+## Enhanced BoatData Integration Guide (R005)
+
+### Overview
+Enhanced BoatData v2.0.0 extends marine sensor data structures to include:
+- **GPS variation** (moved from CompassData to GPSData)
+- **Compass motion sensors** (rate of turn, heel, pitch, heave)
+- **DST sensor data** (Depth/Speed/Temperature - renamed from SpeedData)
+- **Engine telemetry** (RPM, oil temperature, alternator voltage)
+- **Saildrive status** (engagement monitoring via 1-wire)
+- **Battery monitoring** (dual banks A/B via 1-wire)
+- **Shore power** (connection status and power draw via 1-wire)
+
+### Data Structures (src/types/BoatDataTypes.h)
+
+#### GPSData (Enhanced)
+```cpp
+struct GPSData {
+    double latitude;           // Decimal degrees, ±90°
+    double longitude;          // Decimal degrees, ±180°
+    double cog;                // Course over ground, radians [0, 2π]
+    double sog;                // Speed over ground, knots
+    double variation;          // Magnetic variation, radians (MOVED from CompassData)
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+#### CompassData (Enhanced)
+```cpp
+struct CompassData {
+    double trueHeading;        // Radians [0, 2π]
+    double magneticHeading;    // Radians [0, 2π]
+    double rateOfTurn;         // Radians/second, positive = starboard turn (NEW)
+    double heelAngle;          // Radians [-π/2, π/2], positive = starboard (MOVED from SpeedData)
+    double pitchAngle;         // Radians [-π/6, π/6], positive = bow up (NEW)
+    double heave;              // Meters [-5.0, 5.0], positive = upward (NEW)
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+#### DSTData (NEW - replaces SpeedData)
+```cpp
+struct DSTData {
+    double depth;              // Depth below waterline, meters [0, 100]
+    double measuredBoatSpeed;  // Speed through water, m/s [0, 25]
+    double seaTemperature;     // Water temperature, Celsius [-10, 50]
+    bool available;
+    unsigned long lastUpdate;
+};
+// Backward compatibility: typedef DSTData SpeedData;
+```
+
+#### EngineData (NEW)
+```cpp
+struct EngineData {
+    double engineRev;          // Engine RPM [0, 6000]
+    double oilTemperature;     // Oil temp, Celsius [-10, 150]
+    double alternatorVoltage;  // Alternator output, volts [0, 30]
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+#### SaildriveData (NEW)
+```cpp
+struct SaildriveData {
+    bool saildriveEngaged;     // true = deployed/engaged, false = retracted
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+#### BatteryData (NEW - dual banks)
+```cpp
+struct BatteryData {
+    // Battery A (House Bank)
+    double voltageA;           // Volts [0, 30]
+    double amperageA;          // Amperes [-200, 200], +charge/-discharge
+    double stateOfChargeA;     // Percent [0.0, 100.0]
+    bool shoreChargerOnA;
+    bool engineChargerOnA;
+
+    // Battery B (Starter Bank)
+    double voltageB;
+    double amperageB;
+    double stateOfChargeB;
+    bool shoreChargerOnB;
+    bool engineChargerOnB;
+
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+#### ShorePowerData (NEW)
+```cpp
+struct ShorePowerData {
+    bool shorePowerOn;         // true = shore power connected
+    double power;              // Shore power draw, watts [0, 5000]
+    bool available;
+    unsigned long lastUpdate;
+};
+```
+
+### NMEA2000 PGN Handlers (src/components/NMEA2000Handlers.cpp)
+
+#### Implemented Handlers
+- **PGN 127251**: Rate of Turn → CompassData.rateOfTurn
+- **PGN 127252**: Heave → CompassData.heave (vertical displacement, ±5.0m range, positive = upward)
+- **PGN 127257**: Attitude (heel/pitch) → CompassData (Note: heave comes from PGN 127252, not 127257)
+- **PGN 129029**: GNSS Position (enhanced) → GPSData.variation
+- **PGN 128267**: Water Depth → DSTData.depth
+- **PGN 128259**: Speed (Water Referenced) → DSTData.measuredBoatSpeed
+- **PGN 130316**: Temperature Extended Range → DSTData.seaTemperature (Kelvin→Celsius)
+- **PGN 127488**: Engine Parameters, Rapid → EngineData.engineRev
+- **PGN 127489**: Engine Parameters, Dynamic → EngineData oil temp/voltage
+
+#### Registration (when NMEA2000 is initialized)
+```cpp
+#include "components/NMEA2000Handlers.h"
+
+// In setup() after NMEA2000 initialization:
+RegisterN2kHandlers(&NMEA2000, boatData, &logger);
+```
+
+### 1-Wire Sensor Setup (src/hal/implementations/ESP32OneWireSensors.h)
+
+#### Initialization
+```cpp
+#include "hal/implementations/ESP32OneWireSensors.h"
+
+// In setup() after I2C initialization:
+ESP32OneWireSensors* oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
+
+if (oneWireSensors->initialize()) {
+    Serial.println("1-Wire bus initialized successfully");
+    logger.broadcastLog(LogLevel::INFO, "Main", "ONEWIRE_INIT_SUCCESS",
+                        F("{\"bus\":\"GPIO4\"}"));
+} else {
+    Serial.println("WARNING: 1-Wire initialization failed");
+    // Graceful degradation - continue without 1-wire sensors
+}
+```
+
+#### ReactESP Event Loops (polling rates)
+```cpp
+// Saildrive polling (1 Hz)
+app.onRepeat(1000, []() {
+    if (oneWireSensors != nullptr && boatData != nullptr) {
+        SaildriveData saildriveData;
+        if (oneWireSensors->readSaildriveStatus(saildriveData)) {
+            boatData->setSaildriveData(saildriveData);
+            logger.broadcastLog(LogLevel::DEBUG, "OneWire", "SAILDRIVE_UPDATE",
+                String(F("{\"engaged\":")) + (saildriveData.saildriveEngaged ? F("true") : F("false")) + F("}"));
+        } else {
+            logger.broadcastLog(LogLevel::WARN, "OneWire", "SAILDRIVE_READ_FAILED",
+                F("{\"reason\":\"Sensor read error or CRC failure\"}"));
+        }
+    }
+});
+
+// Battery polling (0.5 Hz)
+app.onRepeat(2000, []() {
+    if (oneWireSensors != nullptr && boatData != nullptr) {
+        BatteryMonitorData batteryA, batteryB;
+        bool successA = oneWireSensors->readBatteryA(batteryA);
+        bool successB = oneWireSensors->readBatteryB(batteryB);
+
+        if (successA && successB) {
+            BatteryData batteryData;
+            // ... populate batteryData from batteryA and batteryB
+            boatData->setBatteryData(batteryData);
+            logger.broadcastLog(LogLevel::DEBUG, "OneWire", "BATTERY_UPDATE", ...);
+        }
+    }
+});
+
+// Shore power polling (0.5 Hz)
+app.onRepeat(2000, []() {
+    if (oneWireSensors != nullptr && boatData != nullptr) {
+        ShorePowerData shorePower;
+        if (oneWireSensors->readShorePower(shorePower)) {
+            boatData->setShorePowerData(shorePower);
+            logger.broadcastLog(LogLevel::DEBUG, "OneWire", "SHORE_POWER_UPDATE", ...);
+        }
+    }
+});
+```
+
+### Validation Rules (src/utils/DataValidation.h)
+
+All sensor data is validated at the HAL boundary:
+
+#### Angle Validation
+- **Pitch**: Clamp to [-π/6, π/6] (±30°), warn if exceeded
+- **Heel**: Clamp to [-π/2, π/2] (±90°), warn if exceeds ±45°
+- **Rate of turn**: Clamp to [-π, π] rad/s
+
+#### Range Validation
+- **Heave**: Clamp to [-5.0, 5.0] meters
+- **Depth**: Clamp to [0, 100] meters, reject negative
+- **Engine RPM**: Clamp to [0, 6000] RPM
+- **Battery voltage**: Clamp to [0, 30]V, warn if outside [10, 15]V (12V system)
+- **Battery amperage**: Clamp to [-200, 200]A (signed: +charge, -discharge)
+- **Shore power**: Clamp to [0, 5000]W, warn if >3000W
+
+#### Unit Conversions
+- **Temperature (PGN 130316)**: Kelvin → Celsius (`DataValidation::kelvinToCelsius()`)
+- **All other units**: Direct NMEA2000 native units (no conversion)
+
+### Memory Footprint (v2.0.0)
+- **Total BoatDataStructure**: ~560 bytes (~0.17% of ESP32 RAM)
+- **Delta from v1.0.0**: +256 bytes (acceptable per Constitution Principle II)
+- **1-Wire polling loops**: ~150 bytes stack
+- **Total feature impact**: ~710 bytes RAM (~0.22% of ESP32 RAM)
+
+### Testing Strategy
+
+#### Test Organization
+```bash
+# Contract tests (HAL interface validation)
+pio test -e native -f test_boatdata_contracts
+
+# Integration tests (end-to-end scenarios)
+pio test -e native -f test_boatdata_integration
+
+# Unit tests (validation/conversion logic)
+pio test -e native -f test_boatdata_units
+
+# Hardware tests (ESP32 required)
+pio test -e esp32dev_test -f test_boatdata_hardware
+```
+
+#### Test Coverage
+- **Contract tests**: IOneWireSensors interface, data structure memory layout
+- **Integration tests**: GPS variation, compass attitude, DST sensors, engine, battery, saildrive, shore power
+- **Unit tests**: Validation/clamping, unit conversions, sign conventions
+- **Hardware tests**: 1-wire bus communication, NMEA2000 PGN timing
+
+### Migration Path (SpeedData → DSTData)
+
+#### Phase 1: Introduce DSTData (current release)
+```cpp
+typedef DSTData SpeedData;  // Backward compatibility typedef
+```
+
+#### Phase 2: Update consuming code
+```cpp
+// Old (deprecated):
+double speed = boatData.speed.measuredBoatSpeed;
+
+// New (recommended):
+double speed = boatData.dst.measuredBoatSpeed;
+```
+
+#### Phase 3: Remove typedef (future release 2.1.0)
+- Remove `typedef DSTData SpeedData;` from BoatDataTypes.h
+- All code must use `DSTData` directly
+
+### Troubleshooting
+
+#### 1-Wire Sensor Issues
+- **No devices found**: Check GPIO 4 wiring, verify DS2438 family code 0x26
+- **CRC failures**: Check bus termination, reduce bus length, check 4.7kΩ pull-up resistor
+- **Intermittent reads**: Add 50ms delay between reads, check power supply stability
+
+#### NMEA2000 Issues
+- **PGN not received**: Verify device is sending PGN, check CAN bus termination (120Ω)
+- **Parsing failures**: Enable WebSocket logging (DEBUG level), check NMEA2000 library version
+- **Timing issues**: Reduce ReactESP event loop frequency, check for blocking code in handlers
+
+#### Validation Warnings
+- **Out-of-range values**: Check sensor calibration, verify NMEA2000 PGN field scaling
+- **Availability flags false**: Check sensor wiring, verify device enumeration in logs
+
+### Constitutional Compliance Checklist
+- ✅ **Principle I** (HAL Abstraction): IOneWireSensors interface for all 1-wire access
+- ✅ **Principle II** (Resource Management): Static allocation only, +256 bytes RAM
+- ✅ **Principle V** (Network Debugging): WebSocket logging for all sensor updates
+- ✅ **Principle VI** (Always-On): Non-blocking ReactESP event loops
+- ✅ **Principle VII** (Fail-Safe): Graceful degradation on sensor failures
+
+### References
+- **Specification**: `specs/008-enhanced-boatdata-following/spec.md`
+- **Implementation Plan**: `specs/008-enhanced-boatdata-following/plan.md`
+- **Task List**: `specs/008-enhanced-boatdata-following/tasks.md`
+- **Data Model**: `specs/008-enhanced-boatdata-following/data-model.md`
+- **Research**: `specs/008-enhanced-boatdata-following/research.md`
+- **Quickstart**: `specs/008-enhanced-boatdata-following/quickstart.md`
+
 ## Build Configurations
 
 **Development**:
