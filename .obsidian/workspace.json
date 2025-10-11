@@ -172,7 +172,6 @@
   },
   "active": "fd9b73b16b31e8dc",
   "lastOpenFiles": [
-    "user_requirements/R007 - NMEA 0183 data.md",
     "test/test_nmea0183_units/test_unit_conversions.cpp",
     "test/test_nmea0183_units/test_parsers.cpp",
     "test/test_nmea0183_units/test_main.cpp",
@@ -183,13 +182,7 @@
     "test/test_nmea0183_integration/test_rmc_to_boatdata.cpp",
     "test/test_nmea0183_integration/test_multi_source_priority.cpp",
     "test/test_nmea0183_integration/test_message_type_filter.cpp",
-    "specs/006-nmea-0183-handlers/contracts/ISerialPort.contract.md",
-    "specs/006-nmea-0183-handlers/tasks.md",
-    "specs/006-nmea-0183-handlers/spec.md",
-    "specs/006-nmea-0183-handlers/research.md",
-    "specs/006-nmea-0183-handlers/quickstart.md",
-    "specs/006-nmea-0183-handlers/plan.md",
-    "specs/006-nmea-0183-handlers/data-model.md",
+    "test/test_nmea0183_integration/test_main.cpp",
     "user_requirements/R006 - MCU utilization.md",
     "specs/bugfix-001-loop-frequency-warn-threshold.md",
     "specs/009-heave-data-is/contracts/HandleN2kPGN127252.md",
@@ -208,6 +201,13 @@
     "specs/008-enhanced-boatdata-following/COMPLIANCE.md",
     "specs/007-loop-frequency-should/tasks.md",
     "specs/007-loop-frequency-should/spec.md",
+    "specs/007-loop-frequency-should/research.md",
+    "specs/007-loop-frequency-should/quickstart.md",
+    "specs/007-loop-frequency-should/plan.md",
+    "specs/007-loop-frequency-should/data-model.md",
+    "specs/006-mcu-loop-frequency/contracts/ISystemMetrics-getLoopFrequency.md",
+    "specs/006-mcu-loop-frequency/tasks.md",
+    "specs/006-mcu-loop-frequency/spec.md",
     "misc/IMG_2483.png"
   ]
 }
