@@ -1,33 +1,22 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `examples/poseidongw/` hosts the ESP32 gateway; keep firmware in `src/`, shared headers in `include/`, and hardware-specific code isolated per module.
-- Utility scripts such as `scripts/udp_logger.py` belong in `examples/poseidongw/scripts/`; keep them Python 3 friendly and document CLI usage inline.
-- Use `examples/Calculations/` for small math prototypes and annotate each file with the experiment it supports.
-- Link features back to `user_requirements/` entries to maintain traceability in docs and PRs.
+Use `examples/poseidongw/` for the ESP32 gateway firmware; place C++ sources in `src/`, shared headers in `include/`, and keep hardware-specific code scoped by module. Utility helpers belong in `examples/poseidongw/scripts/` (Python 3). Prototype math experiments live under `examples/Calculations/` with a short annotation describing the supported experiment. Link significant changes back to the matching entry in `user_requirements/` to preserve traceability.
 
-## Build, Test & Development Commands
+## Build, Test, and Development Commands
 - `cd examples/poseidongw && platformio run` compiles the default `esp32dev` target defined in `platformio.ini`.
-- `cd examples/poseidongw && platformio run --target upload` flashes a connected board; set `upload_port` via a local `.ini` override.
-- `cd examples/poseidongw && platformio device monitor` opens a 115200 baud console for runtime logs.
+- `cd examples/poseidongw && platformio run --target upload` flashes a connected board; override `upload_port` locally if needed.
+- `cd examples/poseidongw && platformio device monitor` opens a 115200 baud serial console for runtime logs.
 - `python examples/poseidongw/scripts/udp_logger.py` mirrors the UDP debug feed when validating network output.
 
 ## Coding Style & Naming Conventions
-- Match the existing Arduino style: 2-space indents, opening braces on their own line for functions, inline braces for short control blocks.
-- Use `SCREAMING_SNAKE_CASE` for constants/macros, `PascalCase` for types, and `lowerCamelCase` for functions, following `main.cpp`.
-- Collect pin maps and configuration constants near the top of each translation unit and prefer `constexpr` over new `#define`s.
+Follow the Arduino style already in `src/main.cpp`: 2-space indents, function braces on their own line, inline braces for brief control blocks. Favor `constexpr` for configuration values. Use `SCREAMING_SNAKE_CASE` for constants/macros, `PascalCase` for types, and `lowerCamelCase` for functions. Collect pin maps and configuration constants near the top of each translation unit.
 
 ## Testing Guidelines
-- Add Unity tests under `examples/poseidongw/test/` with filenames like `test_serial.cpp` that mirror the module name.
-- Run `cd examples/poseidongw && platformio test --environment esp32dev` before opening a PR; capture the summary in your submission.
-- Hardware-facing code should expose seam-friendly wrappers so tests can inject fakes and stay device-independent.
+Place Unity tests under `examples/poseidongw/test/` with filenames such as `test_serial.cpp`. Expose seam-friendly abstractions so hardware interactions can be faked. Before submitting changes, run `cd examples/poseidongw && platformio test --environment esp32dev` and record the summary in your PR.
 
 ## Commit & Pull Request Guidelines
-- Follow Conventional Commit prefixes (`feat:`, `fix:`, `docs:`) and keep subject lines under 72 characters, as in the current `git log`.
-- Summarize hardware assumptions, wiring tweaks, and protocol impacts in commit bodies or PR descriptions.
-- PRs must link to the relevant `user_requirements` item, note test commands run, and attach serial or UDP snippets when user-visible output changes.
-- Call out any secrets or environment variables contributors must supply locally to reproduce results.
+Adopt Conventional Commit prefixes (`feat:`, `fix:`, `docs:`) with subjects under 72 characters. Describe hardware assumptions, wiring changes, and protocol impacts in the body. PRs must link to the relevant `user_requirements` item, note build/test commands executed, and include serial or UDP snippets if user-visible output changes. Call out any secrets or environment variables contributors must supply to reproduce results.
 
-## Documentation & Configuration Tips
-- Do not commit real Wi-Fi credentials; leave placeholders (`wifi_ssid`, `wifi_pwd`) and explain overrides in PR notes.
-- Record new configuration defaults or wiring updates in `examples/poseidongw/README.md` to help downstream integrators.
+## Security & Configuration Tips
+Never commit real Wi-Fi credentials—use placeholders such as `wifi_ssid` and `wifi_pwd`. Document new defaults or wiring updates in `examples/poseidongw/README.md` so integrators can mirror the environment safely.
