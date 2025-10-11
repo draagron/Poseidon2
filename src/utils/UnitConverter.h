@@ -137,13 +137,11 @@ public:
      * @return Normalized angle in [0, 2π]
      */
     static inline double normalizeAngle(double radians) {
-        const double TWO_PI = 2.0 * M_PI;
-
-        while (radians >= TWO_PI) {
-            radians -= TWO_PI;
+        while (radians >= (2.0 * M_PI)) {
+            radians -= (2.0 * M_PI);
         }
         while (radians < 0.0) {
-            radians += TWO_PI;
+            radians += (2.0 * M_PI);
         }
 
         return radians;

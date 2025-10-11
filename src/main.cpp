@@ -25,6 +25,7 @@
 #include "hal/implementations/ESP32SystemMetrics.h"
 #include "hal/implementations/ESP32OneWireSensors.h"
 #include "hal/interfaces/IOneWireSensors.h"
+#include "hal/implementations/ESP32SerialPort.h"
 
 // Components
 #include "components/WiFiManager.h"
@@ -38,10 +39,14 @@
 #include "components/CalibrationWebServer.h"
 #include "components/DisplayManager.h"
 #include "components/NMEA2000Handlers.h"
+#include "components/NMEA0183Handler.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
 #include "utils/TimeoutManager.h"
+
+// NMEA library
+#include <NMEA0183.h>
 
 // Configuration
 #include "config.h"
@@ -82,6 +87,11 @@ DisplayManager* displayManager = nullptr;
 
 // 1-Wire sensor components (T036)
 ESP32OneWireSensors* oneWireSensors = nullptr;
+
+// NMEA0183 components (T036)
+tNMEA0183* nmea0183 = nullptr;
+ISerialPort* serial0183 = nullptr;
+NMEA0183Handler* nmea0183Handler = nullptr;
 
 // Reboot management
 bool rebootScheduled = false;
@@ -410,6 +420,64 @@ void setup() {
         // Graceful degradation: Continue operation without display (FR-027)
     }
 
+    // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
+    Serial.println(F("Initializing NMEA0183 handler..."));
+    serial0183 = new ESP32SerialPort(&Serial2);
+    nmea0183 = new tNMEA0183();
+    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
+
+    // Initialize Serial2 at 38400 baud for NMEA 0183
+    nmea0183Handler->init();
+
+    logger.broadcastLog(LogLevel::INFO, "NMEA0183", "INIT",
+                        "{\"port\":\"Serial2\",\"baud\":38400}");
+    Serial.println(F("NMEA0183 handler initialized"));
+
+    // T039: Register NMEA0183 sources with BoatData prioritizer
+    sourcePrioritizer->registerSource("NMEA0183-AP", SensorType::COMPASS, ProtocolType::NMEA0183);
+    sourcePrioritizer->registerSource("NMEA0183-VH", SensorType::GPS, ProtocolType::NMEA0183);
+    Serial.println(F("NMEA0183 sources registered (AP=autopilot, VH=VHF)"));
+
+    // T036: 1-Wire sensors initialization (after I2C, before NMEA)
+    Serial.println(F("Initializing 1-Wire sensors..."));
+    oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
+
+    if (oneWireSensors->initialize()) {
+        Serial.println(F("1-Wire bus initialized successfully"));
+        logger.broadcastLog(LogLevel::INFO, "Main", "ONEWIRE_INIT_SUCCESS",
+                            F("{\"bus\":\"GPIO4\",\"sensors\":\"saildrive,battery,shore_power\"}"));
+    } else {
+        Serial.println(F("WARNING: 1-Wire bus initialization failed"));
+        logger.broadcastLog(LogLevel::WARN, "Main", "ONEWIRE_INIT_FAILED",
+                            F("{\"reason\":\"No devices found or bus error - continuing without 1-wire sensors\"}"));
+        // Graceful degradation: Continue operation without 1-wire sensors
+    }
+
+    // T040-T041: NMEA2000 initialization and PGN handler registration
+    // NOTE: NMEA2000 library initialization will be added in a future feature
+    // When NMEA2000 is initialized, call: RegisterN2kHandlers(&NMEA2000, boatData, &logger);
+    // This will register handlers for PGNs: 127251, 127257, 129029, 128267, 128259, 130316, 127488, 127489
+    Serial.println(F("NMEA2000 initialization placeholder - not yet implemented"));
+    logger.broadcastLog(LogLevel::INFO, "Main", "NMEA2000_PLACEHOLDER",
+                        F("{\"status\":\"PGN handlers ready for registration when NMEA2000 is initialized\"}"));
+    // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
+    Serial.println(F("Initializing NMEA0183 handler..."));
+    serial0183 = new ESP32SerialPort(&Serial2);
+    nmea0183 = new tNMEA0183();
+    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
+
+    // Initialize Serial2 at 38400 baud for NMEA 0183
+    nmea0183Handler->init();
+
+    logger.broadcastLog(LogLevel::INFO, "NMEA0183", "INIT",
+                        "{\"port\":\"Serial2\",\"baud\":38400}");
+    Serial.println(F("NMEA0183 handler initialized"));
+
+    // T039: Register NMEA0183 sources with BoatData prioritizer
+    sourcePrioritizer->registerSource("NMEA0183-AP", SensorType::COMPASS, ProtocolType::NMEA0183);
+    sourcePrioritizer->registerSource("NMEA0183-VH", SensorType::GPS, ProtocolType::NMEA0183);
+    Serial.println(F("NMEA0183 sources registered (AP=autopilot, VH=VHF)"));
+
     // T036: 1-Wire sensors initialization (after I2C, before NMEA)
     Serial.println(F("Initializing 1-Wire sensors..."));
     oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
@@ -517,6 +585,16 @@ void setup() {
             }
         }
     });
+
+    // T037: NMEA0183 sentence processing every 10ms
+    app.onRepeat(10, []() {
+        if (nmea0183Handler != nullptr) {
+            nmea0183Handler->processSentences();
+        }
+    });
+
+    logger.broadcastLog(LogLevel::DEBUG, "NMEA0183", "LOOP_REGISTERED",
+                        "{\"interval\":10}");
 
     // T028: Display refresh loops - 1s animation, 5s status
     app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {
