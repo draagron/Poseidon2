@@ -1,66 +1,5 @@
-<!--
-SYNC IMPACT REPORT - Constitution Amendment
-Version Change: 1.1.0 → 1.2.0 (MINOR)
-Date: 2025-10-07
-
-RATIONALE FOR MINOR VERSION BUMP:
-- Updated Principle V: Network-Based Debugging to prescribe WebSocket logging instead of UDP
-- Material change to prescribed logging mechanism reflects current implementation
-- Aligns constitutional requirements with production codebase
-
-MODIFIED PRINCIPLES:
-- Principle V: Network-Based Debugging (lines 92-101)
-  - Changed from UDP broadcast logging to WebSocket logging
-  - Updated endpoint specification and reliability guarantees
-  - Removed UDP-specific implementation details
-
-ADDED SECTIONS:
-- None
-
-REMOVED SECTIONS:
-- Principle V: UDP-specific implementation details removed
-
-CONTENT CHANGES:
-- "UDP broadcast logging" → "WebSocket logging"
-- Added: "WebSocket endpoint: ws://<device-ip>/logs"
-- Added: "TCP-based protocol ensures reliable delivery (no packet loss)"
-- Updated fallback: "flash if UDP unavailable" → "flash if WebSocket unavailable"
-- Removed: "Lightweight UDP logger to minimize network overhead"
-
-TEMPLATES REQUIRING UPDATES:
-✅ plan-template.md - Already aligned (references "Network Debugging" generically)
-✅ spec-template.md - No constitution-specific dependencies
-✅ tasks-template.md - No constitution-specific dependencies
-✅ .claude/commands/*.md - No updates required
-
-ALIGNMENT VALIDATION:
-✅ Principle V updated to reflect WebSocket implementation
-✅ All 7 core principles still have corresponding checklist items in plan-template.md
-✅ Technology stack requirements remain consistent (ESPAsyncWebServer already approved)
-✅ Documentation now aligns with src/utils/WebSocketLogger implementation
-
-FOLLOW-UP TODOs:
-- None - implementation already migrated to WebSocket (src/utils/WebSocketLogger.{h,cpp})
-
-NOTES:
-- Constitution v1.2.0 prescribes current implementation (not obsolete UDP approach)
-- WebSocket provides superior reliability: TCP vs UDP, ordered delivery, connection state
-- Previous amendment (v1.1.0) added reference documentation; this amendment updates core principle
-
-PREVIOUS AMENDMENT (v1.0.0 → v1.1.0, 2025-10-06):
-- Added "Reference Documentation and Examples" under Technology Stack
-- Material expansion with library documentation links and reference implementation
--->
-
-# Poseidon2 ESP32 Development Constitution
-The Poseidon Gateway is an ESP32-based interface gateway that enables bidirectional communication between a SignalK server and boat instruments using multiple marine data protocols:
-- NMEA 2000 (bidirectional)
-- NMEA 0183 (readonly)
-- 1-wire sensor devices
-
-This system essentially enables integration of various marine instruments using different protocols by acting as a central hub that can translate and forward data between them, with a focus on bridging older NMEA 0183 equipment with modern NMEA 2000 networks and SignalK systems. 
-
-The project is built using PlatformIO with the Arduino framework and runs on ESP32 hardware, specifically designed for marine applications. It serves as a bridge to integrate various marine instruments and sensors with modern SignalK-based systems.
+# [PROJECT_NAME] Constitution
+<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
 
 ## Core Principles
 
@@ -315,19 +254,10 @@ src/
 - README.md per component describing purpose and dependencies
 
 ## Governance
+<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-This constitution supersedes all other development practices. All code changes must demonstrate compliance with these principles.
+[GOVERNANCE_RULES]
+<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
 
-**Amendment Process**:
-- Proposed changes documented with rationale
-- Team review and approval required
-- Migration plan for existing code if applicable
-- Constitution version incremented
-
-**Enforcement**:
-- QA subagent configured to validate constitutional compliance
-- Pull requests must pass QA review before merge
-- Exceptions require documented justification and approval
-- Regular audits to ensure ongoing compliance
-
-**Version**: 1.2.0 | **Ratified**: 2025-10-06 | **Last Amended**: 2025-10-07
+**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
