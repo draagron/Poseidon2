@@ -455,7 +455,12 @@ public:
 - Test code (not in production): ~15KB
 - **Total Flash**: ~15KB production (~0.8% of 1.9MB partition)
 
-**Constitutional Compliance**: ✓ Well under resource limits (Principle II)
+**Actual Measurement** (Phase 3.5 - T041):
+- RAM usage: 44,948 bytes total (13.7% of 327,680 bytes)
+- Flash usage: 957,769 bytes total (48.7% of 1,966,080 bytes)
+- **Baseline comparison**: Estimated impact ~140 bytes RAM, ~15KB flash
+- **Constitutional Compliance**: ✓ Well under resource limits (Principle II)
+- **No heap allocations**: All memory statically allocated per constitutional requirements
 
 ---
 
