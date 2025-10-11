@@ -479,13 +479,16 @@ void setup() {
  * - WiFi connection timeouts
  * - Scheduled reboots
  * - Web server requests (handled by ESPAsyncWebServer)
+ * - NMEA0183 sentence processing
+ * - Display updates
+ * - BoatData calculations
+ *
+ * @note ReactESP handles all timing through event scheduling.
+ *       No delay() needed - app.tick() yields to the scheduler.
  */
 void loop() {
     // Process ReactESP events
     app.tick();
-
-    // Small delay to prevent watchdog issues
-    delay(10);
 }
 
 #endif // UNIT_TEST
