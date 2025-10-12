@@ -40,6 +40,7 @@
 #include "components/DisplayManager.h"
 #include "components/NMEA2000Handlers.h"
 #include "components/NMEA0183Handler.h"
+#include "components/OneWireSensorPoller.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -87,6 +88,7 @@ DisplayManager* displayManager = nullptr;
 
 // 1-Wire sensor components (T036)
 ESP32OneWireSensors* oneWireSensors = nullptr;
+OneWireSensorPoller* oneWirePoller = nullptr;
 
 // NMEA0183 components (T036)
 tNMEA0183* nmea0183 = nullptr;
@@ -453,45 +455,8 @@ void setup() {
         // Graceful degradation: Continue operation without 1-wire sensors
     }
 
-    // T040-T041: NMEA2000 initialization and PGN handler registration
-    // NOTE: NMEA2000 library initialization will be added in a future feature
-    // When NMEA2000 is initialized, call: RegisterN2kHandlers(&NMEA2000, boatData, &logger);
-    // This will register handlers for PGNs: 127251, 127257, 129029, 128267, 128259, 130316, 127488, 127489
-    Serial.println(F("NMEA2000 initialization placeholder - not yet implemented"));
-    logger.broadcastLog(LogLevel::INFO, "Main", "NMEA2000_PLACEHOLDER",
-                        F("{\"status\":\"PGN handlers ready for registration when NMEA2000 is initialized\"}"));
-    // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
-    Serial.println(F("Initializing NMEA0183 handler..."));
-    serial0183 = new ESP32SerialPort(&Serial2);
-    nmea0183 = new tNMEA0183();
-    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
-
-    // Initialize Serial2 at 38400 baud for NMEA 0183
-    nmea0183Handler->init();
-
-    logger.broadcastLog(LogLevel::INFO, "NMEA0183", "INIT",
-                        "{\"port\":\"Serial2\",\"baud\":38400}");
-    Serial.println(F("NMEA0183 handler initialized"));
-
-    // T039: Register NMEA0183 sources with BoatData prioritizer
-    sourcePrioritizer->registerSource("NMEA0183-AP", SensorType::COMPASS, ProtocolType::NMEA0183);
-    sourcePrioritizer->registerSource("NMEA0183-VH", SensorType::GPS, ProtocolType::NMEA0183);
-    Serial.println(F("NMEA0183 sources registered (AP=autopilot, VH=VHF)"));
-
-    // T036: 1-Wire sensors initialization (after I2C, before NMEA)
-    Serial.println(F("Initializing 1-Wire sensors..."));
-    oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
-
-    if (oneWireSensors->initialize()) {
-        Serial.println(F("1-Wire bus initialized successfully"));
-        logger.broadcastLog(LogLevel::INFO, "Main", "ONEWIRE_INIT_SUCCESS",
-                            F("{\"bus\":\"GPIO4\",\"sensors\":\"saildrive,battery,shore_power\"}"));
-    } else {
-        Serial.println(F("WARNING: 1-Wire bus initialization failed"));
-        logger.broadcastLog(LogLevel::WARN, "Main", "ONEWIRE_INIT_FAILED",
-                            F("{\"reason\":\"No devices found or bus error - continuing without 1-wire sensors\"}"));
-        // Graceful degradation: Continue operation without 1-wire sensors
-    }
+    // Initialize 1-Wire sensor poller
+    oneWirePoller = new OneWireSensorPoller(oneWireSensors, boatData, &logger);
 
     // T040-T041: NMEA2000 initialization and PGN handler registration
     // NOTE: NMEA2000 library initialization will be added in a future feature
@@ -516,73 +481,23 @@ void setup() {
 
     // T037-T039: 1-Wire sensor polling loops
     // T037: Saildrive polling (1000ms = 1 Hz)
-    app.onRepeat(1000, []() {
-        if (oneWireSensors != nullptr && boatData != nullptr) {
-            SaildriveData saildriveData;
-            if (oneWireSensors->readSaildriveStatus(saildriveData)) {
-                boatData->setSaildriveData(saildriveData);
-                logger.broadcastLog(LogLevel::DEBUG, "OneWire", "SAILDRIVE_UPDATE",
-                    String(F("{\"engaged\":")) + (saildriveData.saildriveEngaged ? F("true") : F("false")) + F("}"));
-            } else {
-                logger.broadcastLog(LogLevel::WARN, "OneWire", "SAILDRIVE_READ_FAILED",
-                    F("{\"reason\":\"Sensor read error or CRC failure\"}"));
-            }
+    app.onRepeat(1000, [&]() {
+        if (oneWirePoller != nullptr) {
+            oneWirePoller->pollSaildriveData();
         }
     });
 
     // T038: Battery polling (2000ms = 0.5 Hz)
-    app.onRepeat(2000, []() {
-        if (oneWireSensors != nullptr && boatData != nullptr) {
-            BatteryMonitorData batteryA, batteryB;
-            bool successA = oneWireSensors->readBatteryA(batteryA);
-            bool successB = oneWireSensors->readBatteryB(batteryB);
-
-            if (successA && successB) {
-                // Combine into BatteryData structure
-                BatteryData batteryData;
-                batteryData.voltageA = batteryA.voltage;
-                batteryData.amperageA = batteryA.amperage;
-                batteryData.stateOfChargeA = batteryA.stateOfCharge;
-                batteryData.shoreChargerOnA = batteryA.shoreChargerOn;
-                batteryData.engineChargerOnA = batteryA.engineChargerOn;
-                batteryData.voltageB = batteryB.voltage;
-                batteryData.amperageB = batteryB.amperage;
-                batteryData.stateOfChargeB = batteryB.stateOfCharge;
-                batteryData.shoreChargerOnB = batteryB.shoreChargerOn;
-                batteryData.engineChargerOnB = batteryB.engineChargerOn;
-                batteryData.available = true;
-                batteryData.lastUpdate = millis();
-
-                boatData->setBatteryData(batteryData);
-
-                logger.broadcastLog(LogLevel::DEBUG, "OneWire", "BATTERY_UPDATE",
-                    String(F("{\"battA_V\":")) + batteryA.voltage +
-                    F(",\"battA_A\":") + batteryA.amperage +
-                    F(",\"battA_SOC\":") + batteryA.stateOfCharge +
-                    F(",\"battB_V\":") + batteryB.voltage +
-                    F(",\"battB_A\":") + batteryB.amperage +
-                    F(",\"battB_SOC\":") + batteryB.stateOfCharge + F("}"));
-            } else {
-                logger.broadcastLog(LogLevel::WARN, "OneWire", "BATTERY_READ_FAILED",
-                    String(F("{\"battA_success\":")) + (successA ? F("true") : F("false")) +
-                    F(",\"battB_success\":") + (successB ? F("true") : F("false")) + F("}"));
-            }
+    app.onRepeat(2000, [&]() {
+        if (oneWirePoller != nullptr) {
+            oneWirePoller->pollBatteryData();
         }
     });
 
     // T039: Shore power polling (2000ms = 0.5 Hz)
-    app.onRepeat(2000, []() {
-        if (oneWireSensors != nullptr && boatData != nullptr) {
-            ShorePowerData shorePower;
-            if (oneWireSensors->readShorePower(shorePower)) {
-                boatData->setShorePowerData(shorePower);
-                logger.broadcastLog(LogLevel::DEBUG, "OneWire", "SHORE_POWER_UPDATE",
-                    String(F("{\"connected\":")) + (shorePower.shorePowerOn ? F("true") : F("false")) +
-                    F(",\"power_W\":") + shorePower.power + F("}"));
-            } else {
-                logger.broadcastLog(LogLevel::WARN, "OneWire", "SHORE_POWER_READ_FAILED",
-                    F("{\"reason\":\"Sensor read error or CRC failure\"}"));
-            }
+    app.onRepeat(2000, [&]() {
+        if (oneWirePoller != nullptr) {
+            oneWirePoller->pollShorePowerData();
         }
     });
 
