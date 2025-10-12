@@ -46,8 +46,10 @@
 #include "utils/WebSocketLogger.h"
 #include "utils/TimeoutManager.h"
 
-// NMEA library
+// NMEA libraries
 #include <NMEA0183.h>
+#include <NMEA2000.h>
+#include <NMEA2000_esp32.h>
 
 // Configuration
 #include "config.h"
@@ -95,6 +97,9 @@ tNMEA0183* nmea0183 = nullptr;
 ISerialPort* serial0183 = nullptr;
 NMEA0183Handler* nmea0183Handler = nullptr;
 
+// NMEA2000 components (T027)
+tNMEA2000* nmea2000 = nullptr;
+
 // Reboot management
 bool rebootScheduled = false;
 unsigned long rebootTime = 0;
@@ -138,6 +143,52 @@ void onWiFiConnected() {
 
         // Attach WebSocket logger to web server for reliable logging
         logger.begin(webServer->getServer(), "/logs");
+
+        // Register log filter configuration endpoint
+        webServer->getServer()->on("/log-filter", HTTP_POST, [](AsyncWebServerRequest *request) {
+            bool updated = false;
+
+            // Parse query parameters
+            if (request->hasParam("level")) {
+                String levelStr = request->getParam("level")->value();
+                LogLevel level = parseLogLevel(levelStr);
+                logger.setFilterLevel(level);
+                updated = true;
+            }
+
+            if (request->hasParam("components")) {
+                String components = request->getParam("components")->value();
+                logger.setFilterComponents(components);
+                updated = true;
+            }
+
+            if (request->hasParam("events")) {
+                String events = request->getParam("events")->value();
+                logger.setFilterEvents(events);
+                updated = true;
+            }
+
+            // If no params provided, return current filter
+            if (!updated) {
+                request->send(200, "application/json", logger.getFilterConfig());
+                return;
+            }
+
+            // Return success with new filter config
+            String response = "{\"status\":\"ok\",\"filter\":";
+            response += logger.getFilterConfig();
+            response += "}";
+            request->send(200, "application/json", response);
+
+            // Log filter change
+            logger.broadcastLog(LogLevel::INFO, "WebServer", "LOG_FILTER_UPDATED",
+                logger.getFilterConfig());
+        });
+
+        // Register GET endpoint to query current filter
+        webServer->getServer()->on("/log-filter", HTTP_GET, [](AsyncWebServerRequest *request) {
+            request->send(200, "application/json", logger.getFilterConfig());
+        });
 
         logger.broadcastLog(LogLevel::INFO, "WebServer", "STARTED",
             String("{\"ip\":\"") + ip + "\",\"port\":80}");
@@ -324,7 +375,9 @@ void checkConnectionTimeout() {
 void setup() {
     // Initialize serial for initial debugging (minimal use per constitution)
     Serial.begin(115200);
-    delay(100);
+    delay(2000); // Wait for Serial to initialize
+
+    
     Serial.println(F("Poseidon2 WiFi Gateway - Initializing..."));
 
     // T044: Create HAL instances (must be done in setup, not as globals, to avoid watchdog)
@@ -363,8 +416,8 @@ void setup() {
         boatCalib.loaded = true;
 
         boatData->setCalibration(boatCalib);
-        Serial.printf("Calibration loaded: K=%.2f, offset=%.3f rad\n",
-            calib.leewayCalibrationFactor, calib.windAngleOffset);
+        Serial.printf("Calibration loaded: K=%.2f, offset=%.3f deg\n",
+            calib.leewayCalibrationFactor, calib.windAngleOffset * RAD_TO_DEG);
     } else {
         Serial.println(F("No calibration found - using defaults"));
     }
@@ -424,7 +477,8 @@ void setup() {
 
     // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
     Serial.println(F("Initializing NMEA0183 handler..."));
-    serial0183 = new ESP32SerialPort(&Serial2);
+    // Initialize Serial2 with explicit GPIO pins: RX=25, TX=27 (SH-ESP32 board)
+    serial0183 = new ESP32SerialPort(&Serial2, 25, 27);
     nmea0183 = new tNMEA0183();
     nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
 
@@ -444,27 +498,78 @@ void setup() {
     Serial.println(F("Initializing 1-Wire sensors..."));
     oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
 
-    if (oneWireSensors->initialize()) {
+    if (false && oneWireSensors->initialize()) {
         Serial.println(F("1-Wire bus initialized successfully"));
         logger.broadcastLog(LogLevel::INFO, "Main", "ONEWIRE_INIT_SUCCESS",
                             F("{\"bus\":\"GPIO4\",\"sensors\":\"saildrive,battery,shore_power\"}"));
+
+         // Initialize 1-Wire sensor poller
+        oneWirePoller = new OneWireSensorPoller(oneWireSensors, boatData, &logger);
+        logger.broadcastLog(LogLevel::INFO, "OneWire", "POLLING_STARTED",
+                                F("{\"intervals\":{\"saildrive_ms\":1000,\"battery_ms\":2000,\"shore_power_ms\":2000}}"));
     } else {
         Serial.println(F("WARNING: 1-Wire bus initialization failed"));
         logger.broadcastLog(LogLevel::WARN, "Main", "ONEWIRE_INIT_FAILED",
                             F("{\"reason\":\"No devices found or bus error - continuing without 1-wire sensors\"}"));
         // Graceful degradation: Continue operation without 1-wire sensors
+        oneWirePoller = nullptr;
     }
 
-    // Initialize 1-Wire sensor poller
-    oneWirePoller = new OneWireSensorPoller(oneWireSensors, boatData, &logger);
+   
 
-    // T040-T041: NMEA2000 initialization and PGN handler registration
-    // NOTE: NMEA2000 library initialization will be added in a future feature
-    // When NMEA2000 is initialized, call: RegisterN2kHandlers(&NMEA2000, boatData, &logger);
-    // This will register handlers for PGNs: 127251, 127257, 129029, 128267, 128259, 130316, 127488, 127489
-    Serial.println(F("NMEA2000 initialization placeholder - not yet implemented"));
-    logger.broadcastLog(LogLevel::INFO, "Main", "NMEA2000_PLACEHOLDER",
-                        F("{\"status\":\"PGN handlers ready for registration when NMEA2000 is initialized\"}"));
+    // T028: NMEA2000 CAN bus initialization (after NMEA0183, before ReactESP loops)
+    Serial.println(F("Initializing NMEA2000 CAN bus..."));
+
+    // Create NMEA2000 instance with ESP32 CAN driver
+    nmea2000 = new tNMEA2000_esp32((gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN);
+
+    // Set product information
+    nmea2000->SetProductInformation(
+        "00000001",                    // Serial number
+        100,                           // Product code
+        "Poseidon2 Gateway",          // Model ID
+        "1.0.0",                      // Software version
+        "1.0.0"                       // Model version
+    );
+
+    // Set device information
+    nmea2000->SetDeviceInformation(
+        1,                            // Unique number (1-254)
+        130,                          // Device function: PC Gateway
+        25,                           // Device class: Network Device
+        2046                          // Manufacturer code: Self-assigned
+    );
+
+    // Set mode to ListenAndNode (receive and transmit)
+    nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode, 22);  // Node address 22
+
+    // Disable forwarding to PC (we're the gateway)
+    nmea2000->EnableForward(false);
+
+    // Open CAN bus
+    if (nmea2000->Open()) {
+        Serial.println(F("NMEA2000 CAN bus initialized successfully"));
+        logger.broadcastLog(LogLevel::INFO, "NMEA2000", "INIT_SUCCESS",
+                            F("{\"can_tx\":32,\"can_rx\":34,\"baud\":250000}"));
+    } else {
+        Serial.println(F("WARNING: NMEA2000 CAN bus initialization failed"));
+        logger.broadcastLog(LogLevel::ERROR, "NMEA2000", "INIT_FAILED",
+                            F("{\"reason\":\"CAN bus open failed - check wiring and terminators\"}"));
+        // Graceful degradation: Continue operation without NMEA2000
+    }
+
+    // T029: Register NMEA2000 message handlers
+    if (nmea2000 != nullptr) {
+        RegisterN2kHandlers(nmea2000, boatData, &logger);
+        Serial.println(F("NMEA2000 handlers registered - processing 13 PGNs"));
+    }
+
+    // T030: Register NMEA2000 sources with BoatData prioritizer
+    // Note: Currently only GPS and COMPASS sensor types are supported in SourcePrioritizer
+    // DST, ENGINE, and WIND data are updated directly without multi-source prioritization
+    sourcePrioritizer->registerSource("NMEA2000-GPS", SensorType::GPS, ProtocolType::NMEA2000);
+    sourcePrioritizer->registerSource("NMEA2000-COMPASS", SensorType::COMPASS, ProtocolType::NMEA2000);
+    Serial.println(F("NMEA2000 sources registered (GPS, COMPASS)"));
 
     // T046: ReactESP loop integration
     // Periodic timeout check every 1 second
@@ -509,6 +614,16 @@ void setup() {
     });
 
     logger.broadcastLog(LogLevel::DEBUG, "NMEA0183", "LOOP_REGISTERED",
+                        "{\"interval\":10}");
+
+    // NMEA2000 message processing every 10ms
+    app.onRepeat(10, []() {
+        if (nmea2000 != nullptr) {
+            nmea2000->ParseMessages();
+        }
+    });
+
+    logger.broadcastLog(LogLevel::DEBUG, "NMEA2000", "LOOP_REGISTERED",
                         "{\"interval\":10}");
 
     // T028: Display refresh loops - 1s animation, 5s status

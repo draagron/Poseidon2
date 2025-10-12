@@ -30,4 +30,8 @@
 #define DISPLAY_ANIMATION_INTERVAL_MS 1000  // 1 second animation icon update
 #define DISPLAY_STATUS_INTERVAL_MS 5000     // 5 seconds status refresh
 
+// NMEA2000 CAN Bus Configuration (SH-ESP32 Board)
+#define CAN_TX_PIN 32                // GPIO32 for CAN TX
+#define CAN_RX_PIN 34                // GPIO34 for CAN RX
+
 #endif // CONFIG_H

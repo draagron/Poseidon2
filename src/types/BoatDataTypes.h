@@ -389,12 +389,16 @@ struct SourceManager {
  * Stored in /calibration.json on LittleFS.
  * Default values used if file missing or invalid.
  *
+ * NOTE: In the JSON file, windAngleOffset is stored in DEGREES for user convenience,
+ * but internally stored as RADIANS in this struct for calculations.
+ * CalibrationManager handles the conversion automatically.
+ *
  * Memory footprint: ~32 bytes
  */
 struct CalibrationParameters {
     // === Parameters ===
     double leewayCalibrationFactor;  ///< K factor in leeway formula, range (0, +∞)
-    double windAngleOffset;          ///< Masthead misalignment correction, radians, range [-2π, 2π]
+    double windAngleOffset;          ///< Masthead misalignment correction, radians (internal), range [-2π, 2π]
 
     // === Metadata ===
     unsigned long version;           ///< Config format version (1)

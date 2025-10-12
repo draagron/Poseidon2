@@ -5,6 +5,10 @@
 #include <cmath>
 #include <cstring>
 
+// ***** TEMPORARY DEBUG FLAG - REMOVE AFTER DEBUGGING *****
+#define DEBUG_RAW_SERIAL2 0  // Set to 1 to enable raw serial dump
+// **********************************************************
+
 // Static instance pointer for callback (single instance pattern)
 static NMEA0183Handler* s_instance = nullptr;
 
@@ -36,31 +40,109 @@ void NMEA0183Handler::init() {
     // Initialize Serial2 at 38400 baud (project configuration)
     serialPort_->begin(38400);
 
+    // Get underlying Stream for NMEA0183 library (required for ParseMessages)
+    Stream* stream = serialPort_->getStream();
+    if (stream == nullptr) {
+        logger_->broadcastLog(LogLevel::ERROR, "NMEA0183", "INIT_FAILED",
+                             "{\"reason\":\"Stream pointer is null\"}");
+        return;
+    }
+
+    // Set message stream for NMEA0183 library (critical - library reads from this stream)
+    nmea0183_->SetMessageStream(stream);
+
     // Register message handler callback
     nmea0183_->SetMsgHandler(NMEA0183MsgHandler);
 
+    // Open/initialize NMEA0183 library (critical - prepares parser)
+    nmea0183_->Open();
+
     logger_->broadcastLog(LogLevel::INFO, "NMEA0183", "INIT",
-                         "{\"port\":\"Serial2\",\"baud\":38400}");
+                         "{\"port\":\"Serial2\",\"baud\":38400,\"stream\":\"configured\"}");
 }
 
 void NMEA0183Handler::processSentences() {
+    // Check if any data is available on Serial2 (basic connectivity check)
+    int bytesAvailable = serialPort_->available();
+
+    // Log data availability periodically (every ~5 seconds at 10ms polling = 500 calls)
+    static uint16_t callCount = 0;
+    static unsigned long lastAvailableLog = 0;
+    callCount++;
+
+    if (bytesAvailable > 0 && (millis() - lastAvailableLog > 5000)) {
+        String logData = String("{\"bytes_available\":") + String(bytesAvailable) + String("}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "SERIAL_DATA_AVAILABLE", logData);
+        lastAvailableLog = millis();
+    }
+
+    // Log if no data for extended period (every 30 seconds)
+    static unsigned long lastNoDataLog = 0;
+    if (bytesAvailable == 0 && (millis() - lastNoDataLog > 30000)) {
+        logger_->broadcastLog(LogLevel::WARN, "NMEA0183", "NO_SERIAL_DATA",
+                             "{\"warning\":\"No data on Serial2 for 30+ seconds\"}");
+        lastNoDataLog = millis();
+    }
+
+#if DEBUG_RAW_SERIAL2
+    // ***** TEMPORARY DEBUG CODE - Print raw Serial2 bytes to Serial (USB) *****
+    // Print all available bytes to help diagnose sentence parsing issues
+    if (bytesAvailable > 0) {
+        Serial.print("RAW[");
+        Serial.print(bytesAvailable);
+        Serial.print("]: ");
+
+        // Read and echo all available bytes
+        while (serialPort_->available() > 0) {
+            int byte = serialPort_->read();
+            if (byte >= 32 && byte <= 126) {
+                // Printable ASCII
+                Serial.write(byte);
+            } else if (byte == '\r') {
+                Serial.print("<CR>");
+            } else if (byte == '\n') {
+                Serial.print("<LF>");
+            } else {
+                // Non-printable - show hex
+                Serial.print("<0x");
+                if (byte < 16) Serial.print("0");
+                Serial.print(byte, HEX);
+                Serial.print(">");
+            }
+        }
+        Serial.println();  // End of raw dump
+
+        // WARNING: We've consumed the bytes! Parser won't see them.
+        // This is intentional for debugging - we want to see RAW data before parsing
+    }
+#else
     // Process all available NMEA 0183 messages
     // The NMEA0183 library's ParseMessages() reads from the stream and calls
     // the message handler callback for each complete sentence
     nmea0183_->ParseMessages();
+#endif
 }
 
 void NMEA0183Handler::dispatchMessage(const tNMEA0183Msg& msg) {
     // Look up handler in dispatch table
     const char* msgCode = msg.MessageCode();
+    bool handled = false;
+
     for (size_t i = 0; i < handlersCount_; i++) {
         if (strcmp(msgCode, handlers_[i].messageCode) == 0) {
             // Call handler function
             (this->*(handlers_[i].handler))(msg);
+            handled = true;
             break;
         }
     }
-    // If message code not in table, silently ignore (FR-007)
+
+    // Log unhandled message codes (FR-007 - silently ignore, but log for visibility)
+    if (!handled) {
+        String logData = String("{\"talker\":\"") + String(msg.Sender()) +
+                        String("\",\"message_code\":\"") + String(msgCode) + String("\"}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "MESSAGE_NOT_HANDLED", logData);
+    }
 }
 
 void NMEA0183Handler::handleRSA(const tNMEA0183Msg& msg) {
@@ -93,6 +175,10 @@ void NMEA0183Handler::handleRSA(const tNMEA0183Msg& msg) {
 void NMEA0183Handler::handleHDM(const tNMEA0183Msg& msg) {
     // Validate talker ID is "AP" (autopilot)
     if (strcmp(msg.Sender(), "AP") != 0) {
+        // Log rejection due to wrong talker ID
+        String logData = String("{\"talker\":\"") + String(msg.Sender()) +
+                        String("\",\"expected\":\"AP\",\"message_code\":\"HDM\"}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "WRONG_TALKER_REJECTED", logData);
         return;  // Silent discard - wrong talker ID
     }
 
@@ -125,6 +211,10 @@ void NMEA0183Handler::handleHDM(const tNMEA0183Msg& msg) {
 void NMEA0183Handler::handleGGA(const tNMEA0183Msg& msg) {
     // Validate talker ID is "VH" (VHF radio)
     if (strcmp(msg.Sender(), "VH") != 0) {
+        // Log rejection due to wrong talker ID
+        String logData = String("{\"talker\":\"") + String(msg.Sender()) +
+                        String("\",\"expected\":\"VH\",\"message_code\":\"GGA\"}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "WRONG_TALKER_REJECTED", logData);
         return;  // Silent discard - wrong talker ID
     }
 
@@ -166,6 +256,10 @@ void NMEA0183Handler::handleGGA(const tNMEA0183Msg& msg) {
 void NMEA0183Handler::handleRMC(const tNMEA0183Msg& msg) {
     // Validate talker ID is "VH" (VHF radio)
     if (strcmp(msg.Sender(), "VH") != 0) {
+        // Log rejection due to wrong talker ID
+        String logData = String("{\"talker\":\"") + String(msg.Sender()) +
+                        String("\",\"expected\":\"VH\",\"message_code\":\"RMC\"}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "WRONG_TALKER_REJECTED", logData);
         return;  // Silent discard - wrong talker ID
     }
 
@@ -219,6 +313,10 @@ void NMEA0183Handler::handleRMC(const tNMEA0183Msg& msg) {
 void NMEA0183Handler::handleVTG(const tNMEA0183Msg& msg) {
     // Validate talker ID is "VH" (VHF radio)
     if (strcmp(msg.Sender(), "VH") != 0) {
+        // Log rejection due to wrong talker ID
+        String logData = String("{\"talker\":\"") + String(msg.Sender()) +
+                        String("\",\"expected\":\"VH\",\"message_code\":\"VTG\"}");
+        logger_->broadcastLog(LogLevel::DEBUG, "NMEA0183", "WRONG_TALKER_REJECTED", logData);
         return;  // Silent discard - wrong talker ID
     }
 

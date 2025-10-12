@@ -31,11 +31,14 @@ public:
      * @brief Constructor
      *
      * Creates adapter for existing HardwareSerial instance (typically &Serial2).
-     * Does not take ownership - pointer must remain valid.
+     * Does not take ownership - pointer must remain valid. GPIO pins specified
+     * here will be used when begin() is called.
      *
      * @param serial Pointer to HardwareSerial instance (e.g., &Serial2)
+     * @param rxPin RX GPIO pin (default: -1 = use default for this serial port)
+     * @param txPin TX GPIO pin (default: -1 = use default for this serial port)
      */
-    explicit ESP32SerialPort(HardwareSerial* serial);
+    explicit ESP32SerialPort(HardwareSerial* serial, int8_t rxPin = -1, int8_t txPin = -1);
 
     /**
      * @brief Check number of bytes available to read
@@ -67,8 +70,20 @@ public:
      */
     void begin(unsigned long baud) override;
 
+    /**
+     * @brief Get underlying Stream pointer for library integration
+     *
+     * Returns pointer to underlying HardwareSerial (which is a Stream subclass)
+     * for use with NMEA0183 library's SetMessageStream() method.
+     *
+     * @return Pointer to underlying HardwareSerial instance
+     */
+    Stream* getStream() override;
+
 private:
     HardwareSerial* serial_;  ///< Pointer to HardwareSerial instance (not owned)
+    int8_t rxPin_;            ///< RX GPIO pin number
+    int8_t txPin_;            ///< TX GPIO pin number
 };
 
 #endif // ESP32SERIALPORT_H

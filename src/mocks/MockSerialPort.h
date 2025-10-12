@@ -71,6 +71,16 @@ public:
     void begin(unsigned long baud) override;
 
     /**
+     * @brief Get underlying Stream pointer (returns nullptr for mock)
+     *
+     * Mock implementation returns nullptr since there is no real Stream object.
+     * Tests using this mock should handle nullptr or avoid calling this method.
+     *
+     * @return nullptr (no Stream in mock)
+     */
+    Stream* getStream() override;
+
+    /**
      * @brief Reset read position to beginning
      *
      * Allows re-reading the same mock data without reloading.

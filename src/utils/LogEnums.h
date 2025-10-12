@@ -52,6 +52,24 @@ inline const char* logLevelToString(LogLevel level) {
 }
 
 /**
+ * @brief Parse log level from string
+ * @param levelStr Log level as string (case-insensitive)
+ * @return Parsed log level (defaults to INFO if unknown)
+ */
+inline LogLevel parseLogLevel(const String& levelStr) {
+    String upper = levelStr;
+    upper.toUpperCase();
+
+    if (upper == "DEBUG") return LogLevel::DEBUG;
+    if (upper == "INFO")  return LogLevel::INFO;
+    if (upper == "WARN")  return LogLevel::WARN;
+    if (upper == "ERROR") return LogLevel::ERROR;
+    if (upper == "FATAL") return LogLevel::FATAL;
+
+    return LogLevel::INFO;  // Default to INFO if unknown
+}
+
+/**
  * @brief Convert connection event to string
  * @param event Connection event
  * @return Event as string

@@ -28,9 +28,31 @@
  */
 class WebSocketLogger {
 private:
+    /**
+     * @brief Log filter configuration
+     *
+     * Single shared filter applied to all connected clients.
+     * Empty component/event strings match all messages.
+     */
+    struct LogFilter {
+        LogLevel minLevel = LogLevel::INFO;  ///< Minimum log level (default: INFO)
+        char components[128] = "";           ///< Comma-separated component filter (empty = all)
+        char eventPrefixes[128] = "";        ///< Comma-separated event prefix filter (empty = all)
+
+        /**
+         * @brief Check if a log message matches this filter
+         * @param level Message log level
+         * @param component Message component
+         * @param event Message event name
+         * @return true if message should be logged
+         */
+        bool matches(LogLevel level, const String& component, const String& event) const;
+    };
+
     AsyncWebSocket* ws;
     bool isInitialized;
     uint32_t messageCount;
+    LogFilter filter;  ///< Shared filter for all clients
 
 public:
     /**
@@ -99,6 +121,37 @@ public:
      */
     bool hasWebSocketClients() const;
 
+    /**
+     * @brief Set minimum log level filter
+     * @param level Minimum log level to broadcast
+     */
+    void setFilterLevel(LogLevel level);
+
+    /**
+     * @brief Set component filter (comma-separated list)
+     * @param components Component names to include (empty = all)
+     * Example: "NMEA2000,GPS,OneWire"
+     */
+    void setFilterComponents(const String& components);
+
+    /**
+     * @brief Set event prefix filter (comma-separated list)
+     * @param events Event name prefixes to include (empty = all)
+     * Example: "PGN130306_,ERROR,UPDATE"
+     */
+    void setFilterEvents(const String& events);
+
+    /**
+     * @brief Clear all filters (reset to defaults: INFO level, all components/events)
+     */
+    void clearFilter();
+
+    /**
+     * @brief Get current filter configuration as JSON
+     * @return JSON string with current filter settings
+     */
+    String getFilterConfig() const;
+
 private:
     /**
      * @brief Build JSON log message
@@ -121,6 +174,20 @@ private:
      */
     static void onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                                   AwsEventType type, void* arg, uint8_t* data, size_t len);
+
+    /**
+     * @brief Save current filter to LittleFS (/log-filter.json)
+     * @return true if save successful
+     */
+    bool saveFilter();
+
+    /**
+     * @brief Load filter from LittleFS (/log-filter.json)
+     * @return true if load successful (false = use defaults)
+     */
+    bool loadFilter();
+
+    static constexpr const char* FILTER_FILE = "/log-filter.json";
 };
 
 #endif // WEBSOCKET_LOGGER_H
