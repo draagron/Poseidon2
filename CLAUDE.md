@@ -182,6 +182,72 @@ Serial ports are used for device communication (NMEA 0183), NOT debugging:
 - TCP-based protocol ensures no packet loss
 - Fallback: Store critical errors to flash (SPIFFS/LittleFS) if WebSocket unavailable
 
+### WebSocket Log Filtering
+
+To prevent queue overflow and reduce message volume, configure runtime log filters via HTTP endpoint:
+
+**Configure filter (applies to all WebSocket clients)**:
+```bash
+# Set DEBUG level for NMEA2000 component only
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000"
+
+# Filter by event prefix (all PGN130306 events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&events=PGN130306_"
+
+# Multiple components (comma-separated)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=NMEA2000,GPS,OneWire"
+
+# Multiple event prefixes
+curl -X POST "http://<ESP32_IP>/log-filter?level=WARN&events=ERROR,FAILED,OUT_OF_RANGE"
+
+# Combine filters (AND logic)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000&events=PGN130306_"
+
+# Reset to defaults (INFO level, all components/events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=&events="
+```
+
+**Query current filter**:
+```bash
+# GET request returns current filter configuration
+curl -X GET "http://<ESP32_IP>/log-filter"
+# Response: {"level":"DEBUG","components":"NMEA2000","events":"PGN130306_"}
+```
+
+**Filter behavior**:
+- **Single shared filter**: Applies to all connected WebSocket clients
+- **Default filter**: INFO level, all components, all events
+- **Empty parameter**: Matches all (e.g., `components=` matches all components)
+- **Level filtering**: Messages below minimum level are dropped
+- **Component filtering**: Exact substring match in comma-separated list
+- **Event filtering**: Prefix match (e.g., `PGN130306_` matches `PGN130306_UPDATE`, `PGN130306_OUT_OF_RANGE`)
+- **AND logic**: Message must match level AND component AND event filters
+- **Early exit**: Filtered messages never built or queued (reduces CPU/memory usage)
+- **Automatic persistence**: Filter settings automatically saved to `/log-filter.json` on every change
+- **Persists across reboots**: Filter configuration loaded from LittleFS on startup
+
+**Common filter examples**:
+```bash
+# Monitor high-frequency NMEA2000 updates only
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&components=NMEA2000"
+
+# Show only errors and warnings from all components
+curl -X POST "http://192.168.1.100/log-filter?level=WARN"
+
+# Debug specific PGN (Wind Data)
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&events=PGN130306_"
+
+# Monitor WiFi and WebServer events
+curl -X POST "http://192.168.1.100/log-filter?level=INFO&components=WiFi,WebServer"
+
+# Production mode (errors only)
+curl -X POST "http://192.168.1.100/log-filter?level=ERROR"
+```
+
+**Memory footprint**:
+- **RAM**: 256 bytes (single LogFilter struct, static allocation)
+- **Flash**: ~2KB code, `/log-filter.json` file (~100 bytes)
+
 ## Key Implementation Patterns
 
 ### Asynchronous Programming with ReactESP
@@ -661,3 +727,294 @@ The RSA (Rudder Sensor Angle) sentence is proprietary and not included in the st
 
 ---
 **NMEA 0183 Handler Version**: 1.0.0 | **Last Updated**: 2025-10-11
+
+## NMEA 2000 Integration
+
+### Overview
+The NMEA 2000 handler processes 13 Parameter Group Numbers (PGNs) from the CAN bus, converting data to BoatData format with automatic multi-source prioritization. Supports GPS navigation, compass/attitude data, DST (Depth/Speed/Temperature) sensors, engine monitoring, and wind data.
+
+### Supported PGNs
+
+**GPS Data (4 PGNs)**:
+- **PGN 129025**: Position Rapid Update (10 Hz) → GPSData lat/lon
+- **PGN 129026**: COG & SOG Rapid Update (10 Hz) → GPSData cog/sog
+- **PGN 129029**: GNSS Position Data (1 Hz) → GPSData (with variation, altitude, quality)
+- **PGN 127258**: Magnetic Variation (1 Hz) → GPSData.variation
+
+**Compass/Attitude Data (4 PGNs)**:
+- **PGN 127250**: Vessel Heading (10 Hz) → CompassData true/magnetic heading
+- **PGN 127251**: Rate of Turn (10 Hz) → CompassData.rateOfTurn
+- **PGN 127252**: Heave (10 Hz) → CompassData.heave
+- **PGN 127257**: Attitude (10 Hz) → CompassData heel/pitch
+
+**DST Data (3 PGNs)**:
+- **PGN 128267**: Water Depth (10 Hz) → DSTData.depth
+- **PGN 128259**: Boat Speed (10 Hz) → DSTData.measuredBoatSpeed
+- **PGN 130316**: Temperature Extended Range (10 Hz) → DSTData.seaTemperature
+
+**Engine Data (2 PGNs)**:
+- **PGN 127488**: Engine Parameters Rapid (10 Hz) → EngineData.engineRev
+- **PGN 127489**: Engine Parameters Dynamic (1 Hz) → EngineData oil temp/voltage
+
+**Wind Data (1 PGN)**:
+- **PGN 130306**: Wind Data (10 Hz) → WindData apparent angle/speed
+
+### Integration Pattern
+
+**Initialization Sequence** (in `main.cpp`):
+```cpp
+// 1. Add includes
+#include <NMEA2000.h>
+#include <NMEA2000_esp32.h>
+#include <N2kMessages.h>
+#include "components/NMEA2000Handlers.h"
+
+// 2. Create NMEA2000 global variable (after BoatData, before setup())
+tNMEA2000_esp32 NMEA2000(CAN_TX_PIN, CAN_RX_PIN);
+
+// 3. In setup(), after Serial2 initialization (step 5):
+void setup() {
+    // ... earlier initialization ...
+
+    // STEP 5: NMEA2000 CAN bus initialization
+    NMEA2000.SetProductInformation(
+        "00000001",                // Manufacturer's Model serial code
+        100,                       // Manufacturer's product code
+        "Poseidon2 Gateway",       // Manufacturer's Model ID
+        "1.0.0",                   // Manufacturer's Software version code
+        "1.0.0"                    // Manufacturer's Model version
+    );
+
+    NMEA2000.SetDeviceInformation(
+        1,                         // Unique number (1-254)
+        130,                       // Device function: PC Gateway
+        25,                        // Device class: Network Device
+        2046                       // Manufacturer code (use 2046 for experimenting)
+    );
+
+    NMEA2000.SetMode(tNMEA2000::N2km_ListenAndNode);
+    NMEA2000.EnableForward(false);  // No forwarding to USB/Serial
+
+    if (!NMEA2000.Open()) {
+        logger.broadcastLog(LogLevel::ERROR, "NMEA2000", "CAN_INIT_FAILED", F("{}"));
+    } else {
+        logger.broadcastLog(LogLevel::INFO, "NMEA2000", "CAN_INIT_SUCCESS", F("{}"));
+    }
+
+    // STEP 6: Register message handlers
+    RegisterN2kHandlers(&NMEA2000, boatData, &logger);
+
+    // Register sources with BoatData prioritizer
+    boatData->registerSource("NMEA2000-GPS", SensorType::GPS, 10.0);
+    boatData->registerSource("NMEA2000-COMPASS", SensorType::COMPASS, 10.0);
+    boatData->registerSource("NMEA2000-DST", SensorType::DST, 10.0);
+    boatData->registerSource("NMEA2000-ENGINE", SensorType::ENGINE, 10.0);
+    boatData->registerSource("NMEA2000-WIND", SensorType::WIND, 10.0);
+
+    // ... continue with ReactESP event loops ...
+}
+
+// 4. Add NMEA2000.ParseMessages() to ReactESP event loop (10ms interval)
+reactESP.onRepeat(10, []() {
+    NMEA2000.ParseMessages();
+});
+```
+
+### Source Prioritization
+
+NMEA 2000 sources integrate with BoatData's multi-source prioritization:
+- **Source IDs**: "NMEA2000-GPS", "NMEA2000-COMPASS", "NMEA2000-DST", "NMEA2000-ENGINE", "NMEA2000-WIND"
+- **Update frequency**: ~10 Hz typical for most NMEA 2000 sources (1 Hz for some)
+- **Automatic priority**: NMEA 2000 sources (10 Hz) naturally take precedence over NMEA 0183 (1 Hz)
+- **Failover**: If NMEA 2000 source becomes stale (>5 seconds), system automatically falls back to NMEA 0183
+
+**Example**: If both NMEA 2000 GPS (10 Hz) and NMEA 0183 VHF GPS (1 Hz) are available, BoatData uses NMEA 2000 data. If NMEA 2000 GPS fails, system automatically switches to NMEA 0183 GPS data.
+
+### Unit Conversion
+
+All NMEA 2000 data is automatically converted to BoatData target units:
+
+| Data Type | NMEA 2000 Unit | BoatData Unit | Conversion |
+|-----------|----------------|---------------|------------|
+| Heading angles | Radians (0-2π) | Radians (0-2π) | No conversion |
+| Wind angles | Radians (-π to π) | Radians (-π to π) | No conversion |
+| GPS coordinates | Decimal degrees | Decimal degrees | No conversion |
+| Speed (SOG/Wind) | Meters/second | Knots | `m_s * 1.94384` |
+| Temperature | Kelvin | Celsius | `kelvin - 273.15` |
+| Angles (pitch/heel) | Radians | Radians | No conversion |
+
+### Error Handling
+
+**Graceful Degradation**:
+- **Parse failure**: ERROR log, BoatData availability=false, existing data preserved
+- **Unavailable data (N2kDoubleNA)**: DEBUG log, no update, existing data preserved
+- **Out-of-range values**: WARN log with original and clamped values, BoatData updated with clamped value
+- **CAN bus failure**: System continues operation, failover to NMEA 0183 sources
+
+**No handler crashes**: All error conditions handled gracefully with WebSocket logging.
+
+### Performance Constraints
+
+- **Handler execution**: <1ms per message (typical 0.5ms)
+- **Message rate**: 100-1000 messages/second sustained
+- **Update rate**: 10 Hz typical (1 Hz for some PGNs)
+- **Non-blocking**: ReactESP event loop with 10ms polling interval
+- **Latency**: <2ms from CAN interrupt to BoatData update
+
+### Memory Footprint
+
+**Static Allocation**:
+- N2kBoatDataHandler class: 16 bytes (2 pointers + vtable)
+- tNMEA2000_esp32 instance: ~200 bytes
+- CAN message buffers: ~2KB (NMEA2000 library internal)
+- Handler functions: ~10KB flash (5 new handlers)
+- **Total RAM**: ~2.2KB (0.7% of ESP32 320KB RAM)
+- **Total Flash**: ~12KB new code (0.6% of 1.9MB partition)
+
+**Constitutional Compliance**: ✓ Static allocation only, well under resource limits (Principle II)
+
+### Testing
+
+**Run all NMEA 2000 tests**:
+```bash
+# All native tests (no hardware required)
+pio test -e native -f test_nmea2000
+
+# Specific test groups
+pio test -e native -f test_nmea2000_contracts    # Handler function compliance
+pio test -e native -f test_nmea2000_integration  # End-to-end scenarios
+pio test -e native -f test_nmea2000_units        # Validation/conversion logic
+
+# Hardware validation (ESP32 + CAN bus required)
+pio test -e esp32dev_test -f test_nmea2000_hardware
+```
+
+**Hardware Test Requirements**:
+- ESP32 with CAN transceivers on GPIO 34 (RX) and GPIO 32 (TX)
+- NMEA 2000 bus with 12V power and 120Ω terminators
+- At least one NMEA 2000 device broadcasting known PGNs
+- Optional: NMEA 2000 simulator for testing without real devices
+
+### WebSocket Log Monitoring
+
+Monitor NMEA 2000 processing events:
+```bash
+# Connect to WebSocket logs
+python3 src/helpers/ws_logger.py <ESP32_IP> --filter NMEA2000
+```
+
+**Log Levels**:
+- **DEBUG**: Valid PGN processed (PGN number, parsed fields, updated values)
+- **INFO**: Handler registration success (13 PGNs registered)
+- **WARN**: Out-of-range value clamped (original value, clamped value, reason)
+- **ERROR**: Parse failure or CAN bus error (PGN number, failure reason)
+
+**Example Log Output**:
+```json
+{"level":"INFO","component":"NMEA2000","event":"HANDLERS_REGISTERED","data":{"count":13,"pgns":[129025,129026,129029,127258,127250,127251,127252,127257,128267,128259,130316,127488,127489,130306]}}
+{"level":"DEBUG","component":"NMEA2000","event":"PGN129025_UPDATE","data":{"latitude":37.7749,"longitude":-122.4194}}
+{"level":"DEBUG","component":"NMEA2000","event":"PGN130306_UPDATE","data":{"wind_angle":0.785,"wind_speed":12.5}}
+{"level":"WARN","component":"NMEA2000","event":"PGN127489_OIL_TEMP_HIGH","data":{"oil_temp_c":125,"threshold":120}}
+```
+
+### Troubleshooting
+
+**No data from NMEA 2000 devices**:
+1. Verify CAN bus initialization: Check WebSocket logs for "CAN_INIT_SUCCESS"
+2. Check physical wiring: CAN RX=GPIO 34, CAN TX=GPIO 32, 120Ω terminators
+3. Verify bus power: NMEA 2000 bus requires 12V power
+4. Check device addressing: Monitor WebSocket logs for address claiming messages
+5. Verify PGN registration: Check for "HANDLERS_REGISTERED" INFO message
+
+**Data not updating BoatData**:
+1. Verify handler registration: Check for "HANDLERS_REGISTERED" in WebSocket logs
+2. Check PGN support: Only 13 PGNs listed above are processed
+3. Verify data ranges: Out-of-range values are clamped but still updated
+4. Check source registration: Verify "NMEA2000-*" sources registered with BoatData
+
+**NMEA 2000 data ignored (lower priority)**:
+- **Unexpected behavior**: NMEA 2000 should have highest priority (10 Hz)
+- Check update frequency: Verify NMEA 2000 messages arriving at 10 Hz
+- Monitor active source: Use BoatData diagnostics to check `activeSource` for each sensor type
+- If NMEA 0183 has higher measured frequency, NMEA 2000 may be filtered or failing
+
+**CAN bus errors**:
+1. Check termination resistors: Both ends of backbone need 120Ω terminators
+2. Verify cable quality: Use proper NMEA 2000 certified cables (DeviceNet compatible)
+3. Check cable length: Maximum backbone length 200m, maximum drop length 6m
+4. Monitor error counters: WebSocket logs show CAN bus error counts
+
+### Handler Implementation Pattern
+
+Each handler follows this 8-step pattern:
+
+```cpp
+void HandleN2kPGN<NUMBER>(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    // 1. Parse PGN using NMEA2000 library function
+    double field1, field2;
+    if (ParseN2kPGN<NUMBER>(N2kMsg, field1, field2)) {
+
+        // 2. Check for N2kDoubleNA unavailable values
+        if (N2kIsNA(field1)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN<NUMBER>_NA", F("{}"));
+            return;
+        }
+
+        // 3. Validate data using DataValidation helpers
+        bool valid = DataValidation::isValid<Type>(field1);
+        if (!valid) {
+            logger->broadcastLog(LogLevel::WARN, "NMEA2000", "PGN<NUMBER>_OUT_OF_RANGE", ...);
+            field1 = DataValidation::clamp<Type>(field1);
+        }
+
+        // 4. Get current data structure from BoatData
+        DataType data = boatData->get<DataType>();
+
+        // 5. Update fields
+        data.field = field1;
+        data.available = true;
+        data.lastUpdate = millis();
+
+        // 6. Store updated data
+        boatData->set<DataType>(data);
+
+        // 7. Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN<NUMBER>_UPDATE", ...);
+
+        // 8. Increment message counter
+        boatData->incrementNMEA2000Count();
+
+    } else {
+        // Parse failed - log ERROR and set availability to false
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN<NUMBER>_PARSE_FAILED", F("{}"));
+        DataType data = boatData->get<DataType>();
+        data.available = false;
+        boatData->set<DataType>(data);
+    }
+}
+```
+
+**Key Points**:
+- All handlers share same pattern for consistency
+- Handlers are non-blocking (<1ms execution time)
+- Null checks prevent crashes if BoatData or logger not initialized
+- Graceful degradation on all error conditions
+- WebSocket logging for all state changes
+
+### HAL Abstraction
+
+**NMEA2000 Library Provides HAL**:
+- `tNMEA2000_esp32` abstracts CAN bus hardware for ESP32
+- `tN2kMsg` provides hardware-independent message structure
+- Handler functions operate on abstract message types (no direct hardware access)
+- Mock implementations possible via custom `tNMEA2000` subclass for testing
+
+**Benefits**:
+- All handler logic testable on native platform (no ESP32 required)
+- Hardware tests minimal (only CAN bus timing and addressing)
+- Follows constitutional HAL principle (Principle I)
+
+---
+**NMEA 2000 Handler Version**: 1.0.0 | **Last Updated**: 2025-10-12

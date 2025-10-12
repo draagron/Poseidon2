@@ -80,7 +80,11 @@ bool CalibrationManager::loadFromFlash() {
     CalibrationParameters loaded;
     loaded.version = doc["version"] | 1;
     loaded.leewayCalibrationFactor = doc["leewayKFactor"] | DEFAULT_LEEWAY_K_FACTOR;
-    loaded.windAngleOffset = doc["windAngleOffset"] | DEFAULT_WIND_ANGLE_OFFSET;
+
+    // Convert windAngleOffset from degrees (JSON) to radians (internal)
+    double windAngleOffsetDegrees = doc["windAngleOffset"] | 0.0;
+    loaded.windAngleOffset = windAngleOffsetDegrees * DEG_TO_RAD;
+
     loaded.lastModified = doc["lastModified"] | 0;
     loaded.valid = true;
 
@@ -106,7 +110,10 @@ bool CalibrationManager::saveToFlash(const CalibrationParameters& params) {
     StaticJsonDocument<256> doc;
     doc["version"] = params.version;
     doc["leewayKFactor"] = params.leewayCalibrationFactor;
-    doc["windAngleOffset"] = params.windAngleOffset;
+
+    // Convert windAngleOffset from radians (internal) to degrees (JSON)
+    doc["windAngleOffset"] = params.windAngleOffset * RAD_TO_DEG;
+
     doc["lastModified"] = params.lastModified;
 
     // Open file for writing

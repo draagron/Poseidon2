@@ -6,21 +6,43 @@ Connects to ESP32 WebSocket endpoint and receives log messages reliably via TCP.
 Uses WebSocket protocol for guaranteed delivery (no packet loss like UDP).
 
 Usage:
-    python3 ws_logger.py <ESP32_IP> [--port PORT] [--filter LEVEL]
+    python3 ws_logger.py <ESP32_IP> [OPTIONS]
 
 Options:
-    --port PORT       HTTP port (default: 80)
-    --path PATH       WebSocket path (default: /logs)
-    --filter LEVEL    Only show logs at or above level: DEBUG, INFO, WARN, ERROR, FATAL
-    --json            Output raw JSON (no formatting)
-    --no-color        Disable colored output
-    --reconnect       Auto-reconnect on disconnect (default: exit on disconnect)
+    --port PORT           HTTP port (default: 80)
+    --path PATH           WebSocket path (default: /logs)
+    --level LEVEL         Set server-side log level filter: DEBUG, INFO, WARN, ERROR, FATAL
+    --components COMP     Set server-side component filter (comma-separated, e.g., "NMEA2000,GPS")
+    --events EVENTS       Set server-side event prefix filter (comma-separated, e.g., "PGN130306_,ERROR")
+    --filter LEVEL        Client-side log level filter (deprecated, use --level for server-side)
+    --json                Output raw JSON (no formatting)
+    --no-color            Disable colored output
+    --reconnect           Auto-reconnect on disconnect (default: exit on disconnect)
+    --no-server-filter    Skip setting server-side filter (use existing server filter)
 
 Examples:
-    python3 ws_logger.py 192.168.0.94                  # Connect to ESP32
-    python3 ws_logger.py 192.168.0.94 --filter WARN    # Only warnings/errors
-    python3 ws_logger.py 192.168.0.94 --reconnect      # Keep reconnecting
-    python3 ws_logger.py 192.168.0.94 --json           # Raw JSON output
+    # Connect and display current server filter (no changes)
+    python3 ws_logger.py 192.168.0.94
+
+    # Set server filter to DEBUG level for NMEA2000 component only
+    python3 ws_logger.py 192.168.0.94 --level DEBUG --components NMEA2000
+
+    # Filter specific PGN events
+    python3 ws_logger.py 192.168.0.94 --level DEBUG --events PGN130306_
+
+    # Combine filters (AND logic)
+    python3 ws_logger.py 192.168.0.94 --level DEBUG --components NMEA2000 --events PGN
+
+    # Use existing server filter (don't fetch or change it)
+    python3 ws_logger.py 192.168.0.94 --no-server-filter
+
+    # Reset to defaults (INFO level, all components/events)
+    python3 ws_logger.py 192.168.0.94 --level INFO --components "" --events ""
+
+Note:
+    - If no filter args provided, fetches and displays current server filter
+    - Server filter persists across ESP32 reboots (saved to /log-filter.json)
+    - Client-side --filter provides additional filtering on top of server filter
 """
 
 import asyncio
@@ -29,6 +51,9 @@ import json
 import sys
 import argparse
 import signal
+import urllib.request
+import urllib.parse
+import urllib.error
 
 # ANSI color codes
 class Colors:
@@ -102,6 +127,121 @@ def get_log_level_priority(level):
     }
     return priorities.get(level, -1)
 
+def get_server_filter(host, port, use_color=True):
+    """
+    Get current server-side log filter via HTTP GET to /log-filter endpoint
+
+    Args:
+        host: ESP32 IP address
+        port: HTTP port
+        use_color: Whether to use colored output
+
+    Returns:
+        dict with filter config or None if failed
+    """
+    url = f"http://{host}:{port}/log-filter"
+
+    try:
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=5) as response:
+            response_data = response.read().decode('utf-8')
+            filter_config = json.loads(response_data)
+
+            print(f"{colorize('Current server-side filter:', Colors.BOLD, use_color)}")
+            print(f"  Level: {colorize(filter_config.get('level', 'INFO'), Colors.BOLD, use_color)}")
+
+            components = filter_config.get('components', '')
+            if components:
+                print(f"  Components: {colorize(components, Colors.COMPONENT, use_color)}")
+            else:
+                print(f"  Components: {colorize('(all)', Colors.TIMESTAMP, use_color)}")
+
+            events = filter_config.get('events', '')
+            if events:
+                print(f"  Events: {colorize(events, Colors.EVENT, use_color)}")
+            else:
+                print(f"  Events: {colorize('(all)', Colors.TIMESTAMP, use_color)}")
+
+            print()  # Empty line
+            return filter_config
+
+    except urllib.error.HTTPError as e:
+        print(f"{colorize('✗ HTTP Error:', Colors.ERROR, use_color)} {e.code} {e.reason}")
+        return None
+    except urllib.error.URLError as e:
+        print(f"{colorize('✗ Connection Error:', Colors.ERROR, use_color)} {e.reason}")
+        print(f"{colorize('  Make sure ESP32 is reachable and web server is running', Colors.WARN, use_color)}\n")
+        return None
+    except Exception as e:
+        print(f"{colorize('✗ Error fetching filter:', Colors.ERROR, use_color)} {e}\n")
+        return None
+
+def set_server_filter(host, port, level=None, components=None, events=None, use_color=True):
+    """
+    Set server-side log filter via HTTP POST to /log-filter endpoint
+
+    Args:
+        host: ESP32 IP address
+        port: HTTP port
+        level: Log level (DEBUG, INFO, WARN, ERROR, FATAL) or None to skip
+        components: Comma-separated component list or None to skip
+        events: Comma-separated event prefix list or None to skip
+        use_color: Whether to use colored output
+
+    Returns:
+        True if successful, False otherwise
+    """
+    # Build query parameters
+    params = {}
+    if level is not None:
+        params['level'] = level
+    if components is not None:
+        params['components'] = components
+    if events is not None:
+        params['events'] = events
+
+    # If no parameters, nothing to set
+    if not params:
+        return True
+
+    # Build URL
+    query_string = urllib.parse.urlencode(params)
+    url = f"http://{host}:{port}/log-filter?{query_string}"
+
+    try:
+        print(f"{colorize('Setting server-side filter...', Colors.BOLD, use_color)}")
+        if level:
+            print(f"  Level: {colorize(level, Colors.BOLD, use_color)}")
+        if components:
+            print(f"  Components: {colorize(components, Colors.COMPONENT, use_color)}")
+        if events:
+            print(f"  Events: {colorize(events, Colors.EVENT, use_color)}")
+
+        # Make HTTP POST request
+        req = urllib.request.Request(url, method='POST')
+        with urllib.request.urlopen(req, timeout=5) as response:
+            response_data = response.read().decode('utf-8')
+            result = json.loads(response_data)
+
+            if result.get('status') == 'ok':
+                print(f"{colorize('✓ Server filter updated successfully', Colors.INFO, use_color)}\n")
+                return True
+            else:
+                print(f"{colorize('✗ Server returned unexpected response', Colors.WARN, use_color)}")
+                print(f"  Response: {response_data}\n")
+                return False
+
+    except urllib.error.HTTPError as e:
+        print(f"{colorize('✗ HTTP Error:', Colors.ERROR, use_color)} {e.code} {e.reason}")
+        return False
+    except urllib.error.URLError as e:
+        print(f"{colorize('✗ Connection Error:', Colors.ERROR, use_color)} {e.reason}")
+        print(f"{colorize('  Make sure ESP32 is reachable and web server is running', Colors.WARN, use_color)}\n")
+        return False
+    except Exception as e:
+        print(f"{colorize('✗ Error setting filter:', Colors.ERROR, use_color)} {e}\n")
+        return False
+
 async def receive_logs(uri, args, use_color, min_priority):
     """Connect to WebSocket and receive log messages"""
     packets_received = 0
@@ -115,7 +255,9 @@ async def receive_logs(uri, args, use_color, min_priority):
             close_timeout=10   # Wait 10 seconds for close handshake
         ) as websocket:
             print(f"{colorize('Connected to', Colors.BOLD, use_color)} {uri}")
-            print(f"{colorize('Filter level:', Colors.BOLD, use_color)} {args.filter}+")
+            if args.level or args.components or args.events:
+                print(f"{colorize('Server filter active', Colors.BOLD, use_color)} (see configuration above)")
+            print(f"{colorize('Client-side filter:', Colors.BOLD, use_color)} {args.filter}+ (additional filtering)")
             print(f"{colorize('Press Ctrl+C to exit', Colors.BOLD, use_color)}\n")
 
             async for message in websocket:
@@ -165,6 +307,24 @@ async def main_async(args):
     use_color = not args.no_color and sys.stdout.isatty()
     min_priority = get_log_level_priority(args.filter)
 
+    # Handle server-side filter (unless --no-server-filter specified)
+    if not args.no_server_filter:
+        # If --level, --components, or --events specified, set server filter
+        if args.level is not None or args.components is not None or args.events is not None:
+            success = set_server_filter(
+                args.host,
+                args.port,
+                level=args.level,
+                components=args.components,
+                events=args.events,
+                use_color=use_color
+            )
+            if not success:
+                print(f"{colorize('Warning: Failed to set server filter, continuing anyway...', Colors.WARN, use_color)}\n")
+        else:
+            # No filter args provided - fetch and display current server filter
+            get_server_filter(args.host, args.port, use_color=use_color)
+
     # Build WebSocket URI
     uri = f"ws://{args.host}:{args.port}{args.path}"
 
@@ -209,9 +369,24 @@ def main():
                         help='HTTP port (default: 80)')
     parser.add_argument('--path', type=str, default='/logs',
                         help='WebSocket path (default: /logs)')
+
+    # Server-side filter options (new)
+    parser.add_argument('--level', type=str, default=None,
+                        choices=['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'],
+                        help='Set server-side log level filter')
+    parser.add_argument('--components', type=str, default=None,
+                        help='Set server-side component filter (comma-separated)')
+    parser.add_argument('--events', type=str, default=None,
+                        help='Set server-side event prefix filter (comma-separated)')
+    parser.add_argument('--no-server-filter', action='store_true',
+                        help='Skip setting server-side filter (use existing server filter)')
+
+    # Client-side filter (deprecated, for backward compatibility)
     parser.add_argument('--filter', type=str, default='DEBUG',
                         choices=['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'],
-                        help='Minimum log level to display')
+                        help='Client-side log level filter (deprecated, use --level)')
+
+    # Output options
     parser.add_argument('--json', action='store_true',
                         help='Output raw JSON (no formatting)')
     parser.add_argument('--no-color', action='store_true',

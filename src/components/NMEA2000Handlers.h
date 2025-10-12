@@ -1,29 +1,42 @@
 /**
  * @file NMEA2000Handlers.h
- * @brief NMEA2000 PGN message handlers for Enhanced BoatData v2.0.0
+ * @brief NMEA2000 PGN message handlers for NMEA 2000 handling feature
  *
  * This file contains handler functions for NMEA2000 Parameter Group Numbers (PGNs)
- * that populate the enhanced BoatData structure. Each handler:
+ * that populate the BoatData structure. Each handler:
  * - Parses the PGN using NMEA2000 library functions
  * - Validates data using DataValidation helpers
  * - Updates the global BoatData instance
  * - Logs events via WebSocket for debugging
  *
- * PGN Handlers (9 new + 1 enhanced):
+ * PGN Handlers (13 total):
+ * GPS (4 PGNs):
+ * - PGN 129025: Position, Rapid Update → GPSData lat/lon
+ * - PGN 129026: COG & SOG, Rapid Update → GPSData cog/sog
+ * - PGN 129029: GNSS Position Data → GPSData lat/lon
+ * - PGN 127258: Magnetic Variation → GPSData.variation
+ *
+ * Compass (4 PGNs):
+ * - PGN 127250: Vessel Heading → CompassData true/magnetic heading
  * - PGN 127251: Rate of Turn → CompassData.rateOfTurn
  * - PGN 127252: Heave → CompassData.heave
- * - PGN 127257: Attitude → CompassData heel/pitch (heave is N/A in this PGN)
- * - PGN 129029: GNSS Position (enhanced) → GPSData.variation
+ * - PGN 127257: Attitude → CompassData heel/pitch
+ *
+ * DST (3 PGNs):
  * - PGN 128267: Water Depth → DSTData.depth
  * - PGN 128259: Speed (Water Referenced) → DSTData.measuredBoatSpeed
  * - PGN 130316: Temperature Extended Range → DSTData.seaTemperature
+ *
+ * Engine (2 PGNs):
  * - PGN 127488: Engine Parameters, Rapid → EngineData.engineRev
  * - PGN 127489: Engine Parameters, Dynamic → EngineData oil temp/voltage
  *
- * @see specs/008-enhanced-boatdata-following/research.md lines 260-313
- * @see specs/008-enhanced-boatdata-following/data-model.md
- * @version 2.0.0
- * @date 2025-10-10
+ * Wind (1 PGN):
+ * - PGN 130306: Wind Data → WindData apparent wind angle/speed
+ *
+ * @see specs/010-nmea-2000-handling/
+ * @version 1.0.0
+ * @date 2025-10-12
  */
 
 #ifndef NMEA2000_HANDLERS_H
@@ -166,6 +179,67 @@ void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param logger WebSocket logger for debug output
  */
 void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+
+/**
+ * @brief Handle PGN 129025 - Position, Rapid Update
+ *
+ * Updates GPSData with latitude and longitude at 10 Hz update rate.
+ * This is the primary GPS position source for navigation.
+ *
+ * @param N2kMsg NMEA2000 message
+ * @param boatData BoatData instance to update
+ * @param logger WebSocket logger for debug output
+ */
+void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+
+/**
+ * @brief Handle PGN 129026 - COG & SOG, Rapid Update
+ *
+ * Updates GPSData with course over ground and speed over ground.
+ * Speed is converted from m/s (NMEA2000) to knots (BoatData).
+ *
+ * @param N2kMsg NMEA2000 message
+ * @param boatData BoatData instance to update
+ * @param logger WebSocket logger for debug output
+ */
+void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+
+/**
+ * @brief Handle PGN 127250 - Vessel Heading
+ *
+ * Updates CompassData with true or magnetic heading based on reference type.
+ * Routes to trueHeading (N2khr_true) or magneticHeading (N2khr_magnetic).
+ *
+ * @param N2kMsg NMEA2000 message
+ * @param boatData BoatData instance to update
+ * @param logger WebSocket logger for debug output
+ */
+void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+
+/**
+ * @brief Handle PGN 127258 - Magnetic Variation
+ *
+ * Updates GPSData.variation with magnetic variation value.
+ * Alternative source to PGN 129029 variation field.
+ *
+ * @param N2kMsg NMEA2000 message
+ * @param boatData BoatData instance to update
+ * @param logger WebSocket logger for debug output
+ */
+void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+
+/**
+ * @brief Handle PGN 130306 - Wind Data
+ *
+ * Updates WindData with apparent wind angle and speed.
+ * Only processes N2kWind_Apparent reference type (ignores true wind).
+ * Speed is converted from m/s (NMEA2000) to knots (BoatData).
+ *
+ * @param N2kMsg NMEA2000 message
+ * @param boatData BoatData instance to update
+ * @param logger WebSocket logger for debug output
+ */
+void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
 
 /**
  * @brief Register all PGN handlers with NMEA2000 library

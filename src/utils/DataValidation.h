@@ -184,6 +184,164 @@ inline double kelvinToCelsius(double kelvin) {
 }
 
 /**
+ * @brief Convert meters per second to knots
+ *
+ * Used for NMEA2000 speed conversions (SOG, wind speed, boat speed)
+ *
+ * @param mps Speed in meters per second
+ * @return Speed in knots
+ */
+inline double mpsToKnots(double mps) {
+    return mps * 1.9438444924406047516198704103672;
+}
+
+/**
+ * @brief Clamp latitude to valid range [-90, 90] degrees
+ *
+ * @param latitude Latitude in decimal degrees
+ * @return Clamped latitude value
+ */
+inline double clampLatitude(double latitude) {
+    return constrain(latitude, -90.0, 90.0);
+}
+
+/**
+ * @brief Validate latitude is within valid range
+ *
+ * @param latitude Latitude in decimal degrees
+ * @return true if within [-90, 90], false otherwise
+ */
+inline bool isValidLatitude(double latitude) {
+    return (latitude >= -90.0 && latitude <= 90.0);
+}
+
+/**
+ * @brief Clamp longitude to valid range [-180, 180] degrees
+ *
+ * @param longitude Longitude in decimal degrees
+ * @return Clamped longitude value
+ */
+inline double clampLongitude(double longitude) {
+    return constrain(longitude, -180.0, 180.0);
+}
+
+/**
+ * @brief Validate longitude is within valid range
+ *
+ * @param longitude Longitude in decimal degrees
+ * @return true if within [-180, 180], false otherwise
+ */
+inline bool isValidLongitude(double longitude) {
+    return (longitude >= -180.0 && longitude <= 180.0);
+}
+
+/**
+ * @brief Wrap angle to range [0, 2π] radians
+ *
+ * @param angle Angle in radians
+ * @return Wrapped angle in [0, 2π]
+ */
+inline double wrapAngle2Pi(double angle) {
+    while (angle < 0) angle += 2 * M_PI;
+    while (angle >= 2 * M_PI) angle -= 2 * M_PI;
+    return angle;
+}
+
+/**
+ * @brief Validate COG (Course Over Ground) is within range
+ *
+ * @param cog Course in radians
+ * @return true if within [0, 2π], false otherwise
+ */
+inline bool isValidCOG(double cog) {
+    return (cog >= 0.0 && cog <= 2 * M_PI);
+}
+
+/**
+ * @brief Clamp SOG (Speed Over Ground) to valid range [0, 100] knots
+ *
+ * @param sog Speed in knots
+ * @return Clamped SOG value
+ */
+inline double clampSOG(double sog) {
+    return constrain(sog, 0.0, 100.0);
+}
+
+/**
+ * @brief Validate SOG is within normal range
+ *
+ * @param sog Speed in knots
+ * @return true if within [0, 100], false otherwise
+ */
+inline bool isValidSOG(double sog) {
+    return (sog >= 0.0 && sog <= 100.0);
+}
+
+/**
+ * @brief Clamp magnetic variation to valid range [-30°, 30°]
+ *
+ * @param variation Variation in radians
+ * @return Clamped variation value
+ */
+inline double clampVariation(double variation) {
+    constexpr double MAX_VARIATION = 30.0 * M_PI / 180.0;  // 30° in radians
+    return constrain(variation, -MAX_VARIATION, MAX_VARIATION);
+}
+
+/**
+ * @brief Validate magnetic variation is within normal range
+ *
+ * @param variation Variation in radians
+ * @return true if within [-30°, 30°], false otherwise
+ */
+inline bool isValidVariation(double variation) {
+    constexpr double MAX_VARIATION = 30.0 * M_PI / 180.0;  // 30° in radians
+    return (fabs(variation) <= MAX_VARIATION);
+}
+
+/**
+ * @brief Wrap wind angle to range [-π, π] radians
+ *
+ * @param angle Wind angle in radians
+ * @return Wrapped angle in [-π, π]
+ */
+inline double wrapWindAngle(double angle) {
+    while (angle < -M_PI) angle += 2 * M_PI;
+    while (angle > M_PI) angle -= 2 * M_PI;
+    return angle;
+}
+
+/**
+ * @brief Clamp wind speed to valid range [0, 100] knots
+ *
+ * @param speed Wind speed in knots
+ * @return Clamped wind speed value
+ */
+inline double clampWindSpeed(double speed) {
+    return constrain(speed, 0.0, 100.0);
+}
+
+/**
+ * @brief Validate wind speed is within normal range
+ *
+ * @param speed Wind speed in knots
+ * @return true if within [0, 100], false otherwise
+ */
+inline bool isValidWindSpeed(double speed) {
+    return (speed >= 0.0 && speed <= 100.0);
+}
+
+/**
+ * @brief Validate heading angle is within range [0, 2π]
+ *
+ * @param heading Heading in radians
+ * @return true if within [0, 2π], false otherwise
+ */
+inline bool isValidHeading(double heading) {
+    return (heading >= 0.0 && heading <= 2 * M_PI);
+}
+
+/**
  * @brief Clamp depth to valid range [0, 100] meters
  *
  * @param depth Depth in meters

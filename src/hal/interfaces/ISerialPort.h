@@ -60,6 +60,18 @@ public:
     virtual void begin(unsigned long baud) = 0;
 
     /**
+     * @brief Get underlying Stream pointer for library integration
+     *
+     * Returns pointer to underlying Stream object (e.g., HardwareSerial) for
+     * use with libraries that require direct Stream access (like NMEA0183 library's
+     * SetMessageStream method). Required for NMEA0183 library integration.
+     *
+     * @return Pointer to underlying Stream object (HardwareSerial for ESP32)
+     * @note Pointer remains valid for lifetime of ISerialPort instance
+     */
+    virtual class Stream* getStream() = 0;
+
+    /**
      * @brief Virtual destructor for proper cleanup
      *
      * Ensures derived classes can properly clean up resources when deleted

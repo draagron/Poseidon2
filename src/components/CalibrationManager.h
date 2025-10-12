@@ -36,9 +36,12 @@
  * {
  *   "version": 1,
  *   "leewayKFactor": 0.65,
- *   "windAngleOffset": 0.087,
+ *   "windAngleOffset": 5.0,
  *   "lastModified": 1696608000
  * }
+ *
+ * NOTE: windAngleOffset is stored in DEGREES in the JSON file for user convenience,
+ * but converted to radians internally for calculations.
  *
  * Usage:
  * @code
@@ -54,13 +57,13 @@
  * // Update calibration
  * CalibrationParameters params;
  * params.leewayCalibrationFactor = 0.75;
- * params.windAngleOffset = 0.087;
+ * params.windAngleOffset = 5.0 * DEG_TO_RAD;  // 5 degrees converted to radians
  * params.version = 1;
  * params.lastModified = time(nullptr);
  * params.valid = true;
  *
  * if (calibMgr.setCalibration(params)) {
- *     calibMgr.saveToFlash(params);
+ *     calibMgr.saveToFlash(params);  // Will save as degrees in JSON
  * }
  * @endcode
  */

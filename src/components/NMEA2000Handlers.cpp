@@ -83,6 +83,9 @@ void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
             return;
         }
 
+        // Convert from centimeters to meters (NMEA2000 reports in cm)
+        heave = heave / 100.0;
+
         // Validate and clamp heave
         bool valid = DataValidation::isValidHeave(heave);
         if (!valid) {
@@ -574,6 +577,292 @@ void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 }
 
 // ============================================================================
+// PGN 129025 - Position, Rapid Update
+// ============================================================================
+
+void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    double Latitude, Longitude;
+
+    if (ParseN2kPGN129025(N2kMsg, Latitude, Longitude)) {
+        // Check if position data is valid
+        if (N2kIsNA(Latitude) || N2kIsNA(Longitude)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129025_NA",
+                F("{\"reason\":\"Position not available\"}"));
+            return;
+        }
+
+        // Validate latitude and longitude
+        bool validLat = DataValidation::isValidLatitude(Latitude);
+        bool validLon = DataValidation::isValidLongitude(Longitude);
+
+        if (!validLat || !validLon) {
+            logger->broadcastLog(LogLevel::WARN, "NMEA2000", "PGN129025_OUT_OF_RANGE",
+                String(F("{\"latitude\":")) + Latitude + F(",\"longitude\":") + Longitude + F("}"));
+            Latitude = DataValidation::clampLatitude(Latitude);
+            Longitude = DataValidation::clampLongitude(Longitude);
+        }
+
+        // Get current GPS data
+        GPSData gps = boatData->getGPSData();
+
+        // Update position
+        gps.latitude = Latitude;
+        gps.longitude = Longitude;
+        gps.available = true;
+        gps.lastUpdate = millis();
+
+        // Store updated data
+        boatData->setGPSData(gps);
+
+        // Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129025_UPDATE",
+            String(F("{\"latitude\":")) + Latitude + F(",\"longitude\":") + Longitude + F("}"));
+
+        // Increment message counter
+        boatData->incrementNMEA2000Count();
+    } else {
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN129025_PARSE_FAILED",
+            F("{\"reason\":\"Failed to parse PGN 129025\"}"));
+    }
+}
+
+// ============================================================================
+// PGN 129026 - COG & SOG, Rapid Update
+// ============================================================================
+
+void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    unsigned char SID;
+    tN2kHeadingReference COGReference;
+    double COG, SOG;
+
+    if (ParseN2kPGN129026(N2kMsg, SID, COGReference, COG, SOG)) {
+        // Check if COG/SOG data is valid
+        if (N2kIsNA(COG) || N2kIsNA(SOG)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129026_NA",
+                F("{\"reason\":\"COG/SOG not available\"}"));
+            return;
+        }
+
+        // Validate COG (wrap to [0, 2π])
+        COG = DataValidation::wrapAngle2Pi(COG);
+
+        // Convert SOG from m/s to knots
+        double SOGKnots = DataValidation::mpsToKnots(SOG);
+
+        // Validate and clamp SOG
+        bool validSOG = DataValidation::isValidSOG(SOGKnots);
+        if (!validSOG) {
+            logger->broadcastLog(LogLevel::WARN, "NMEA2000", "PGN129026_SOG_OUT_OF_RANGE",
+                String(F("{\"sog_knots\":")) + SOGKnots + F(",\"clamped\":") +
+                DataValidation::clampSOG(SOGKnots) + F("}"));
+            SOGKnots = DataValidation::clampSOG(SOGKnots);
+        }
+
+        // Get current GPS data
+        GPSData gps = boatData->getGPSData();
+
+        // Update COG and SOG
+        gps.cog = COG;
+        gps.sog = SOGKnots;
+        gps.available = true;
+        gps.lastUpdate = millis();
+
+        // Store updated data
+        boatData->setGPSData(gps);
+
+        // Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129026_UPDATE",
+            String(F("{\"cog_rad\":")) + COG + F(",\"sog_knots\":") + SOGKnots + F("}"));
+
+        // Increment message counter
+        boatData->incrementNMEA2000Count();
+    } else {
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN129026_PARSE_FAILED",
+            F("{\"reason\":\"Failed to parse PGN 129026\"}"));
+    }
+}
+
+// ============================================================================
+// PGN 127250 - Vessel Heading
+// ============================================================================
+
+void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    unsigned char SID;
+    double Heading, Deviation, Variation;
+    tN2kHeadingReference Reference;
+
+    if (ParseN2kPGN127250(N2kMsg, SID, Heading, Deviation, Variation, Reference)) {
+        // Check if heading is valid
+        if (N2kIsNA(Heading)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127250_NA",
+                F("{\"reason\":\"Heading not available\"}"));
+            return;
+        }
+
+        // Wrap heading to [0, 2π]
+        Heading = DataValidation::wrapAngle2Pi(Heading);
+
+        // Get current compass data
+        CompassData compass = boatData->getCompassData();
+
+        // Route to appropriate field based on reference type
+        if (Reference == N2khr_true) {
+            compass.trueHeading = Heading;
+        } else if (Reference == N2khr_magnetic) {
+            compass.magneticHeading = Heading;
+        } else {
+            // Unknown reference type - ignore
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127250_UNKNOWN_REF",
+                F("{\"reason\":\"Unknown heading reference type\"}"));
+            return;
+        }
+
+        compass.available = true;
+        compass.lastUpdate = millis();
+
+        // Store updated data
+        boatData->setCompassData(compass);
+
+        // Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127250_UPDATE",
+            String(F("{\"heading\":")) + Heading + F(",\"reference\":\"") +
+            (Reference == N2khr_true ? F("true") : F("magnetic")) + F("\"}"));
+
+        // Increment message counter
+        boatData->incrementNMEA2000Count();
+    } else {
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN127250_PARSE_FAILED",
+            F("{\"reason\":\"Failed to parse PGN 127250\"}"));
+    }
+}
+
+// ============================================================================
+// PGN 127258 - Magnetic Variation
+// ============================================================================
+
+void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    unsigned char SID;
+    tN2kMagneticVariation Source;
+    uint16_t DaysSince1970;
+    double Variation;
+
+    if (ParseN2kPGN127258(N2kMsg, SID, Source, DaysSince1970, Variation)) {
+        // Check if variation is valid
+        if (N2kIsNA(Variation)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127258_NA",
+                F("{\"reason\":\"Variation not available\"}"));
+            return;
+        }
+
+        // Validate variation
+        bool valid = DataValidation::isValidVariation(Variation);
+        if (!valid) {
+            logger->broadcastLog(LogLevel::WARN, "NMEA2000", "PGN127258_OUT_OF_RANGE",
+                String(F("{\"variation\":")) + Variation + F(",\"clamped\":") +
+                DataValidation::clampVariation(Variation) + F("}"));
+            Variation = DataValidation::clampVariation(Variation);
+        }
+
+        // Get current GPS data
+        GPSData gps = boatData->getGPSData();
+
+        // Update variation
+        gps.variation = Variation;
+        gps.available = true;
+        gps.lastUpdate = millis();
+
+        // Store updated data
+        boatData->setGPSData(gps);
+
+        // Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127258_UPDATE",
+            String(F("{\"variation_rad\":")) + Variation + F("}"));
+
+        // Increment message counter
+        boatData->incrementNMEA2000Count();
+    } else {
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN127258_PARSE_FAILED",
+            F("{\"reason\":\"Failed to parse PGN 127258\"}"));
+    }
+}
+
+// ============================================================================
+// PGN 130306 - Wind Data
+// ============================================================================
+
+void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+    if (boatData == nullptr || logger == nullptr) return;
+
+    unsigned char SID;
+    double WindSpeed, WindAngle;
+    tN2kWindReference WindReference;
+
+    if (ParseN2kPGN130306(N2kMsg, SID, WindSpeed, WindAngle, WindReference)) {
+        // Only process apparent wind (ignore true wind references)
+        if (WindReference != N2kWind_Apparent) {
+            // Silently ignore non-apparent wind
+             
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN130306_IGNORED",
+                String(F("{\"wind_ref\":")) + WindReference + F("},"));
+            return;
+        }
+
+        // Check if wind data is valid
+        if (N2kIsNA(WindSpeed) || N2kIsNA(WindAngle)) {
+            logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN130306_NA",
+                F("{\"reason\":\"Wind data not available\"}"));
+            return;
+        }
+
+        // Wrap wind angle to [-π, π]
+        WindAngle = DataValidation::wrapWindAngle(WindAngle);
+
+        // Convert wind speed from m/s to knots
+        double WindSpeedKnots = DataValidation::mpsToKnots(WindSpeed);
+
+        // Validate and clamp wind speed
+        bool valid = DataValidation::isValidWindSpeed(WindSpeedKnots);
+        if (!valid) {
+            logger->broadcastLog(LogLevel::WARN, "NMEA2000", "PGN130306_OUT_OF_RANGE",
+                String(F("{\"wind_speed_knots\":")) + WindSpeedKnots + F(",\"clamped\":") +
+                DataValidation::clampWindSpeed(WindSpeedKnots) + F("}"));
+            WindSpeedKnots = DataValidation::clampWindSpeed(WindSpeedKnots);
+        }
+
+        // Get current wind data
+        WindData wind = boatData->getWindData();
+
+        // Update wind angle and speed
+        wind.apparentWindAngle = WindAngle;
+        wind.apparentWindSpeed = WindSpeedKnots;
+        wind.available = true;
+        wind.lastUpdate = millis();
+
+        // Store updated data
+        boatData->setWindData(wind);
+
+        // Log update (DEBUG level)
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN130306_UPDATE",
+            String(F("{\"angle_rad\":")) + WindAngle + F(",\"speed_knots\":") +
+            WindSpeedKnots + F("}"));
+
+        // Increment message counter
+        boatData->incrementNMEA2000Count();
+    } else {
+        logger->broadcastLog(LogLevel::ERROR, "NMEA2000", "PGN130306_PARSE_FAILED",
+            F("{\"reason\":\"Failed to parse PGN 130306\"}"));
+    }
+}
+
+// ============================================================================
 // Handler Registration
 // ============================================================================
 
@@ -588,7 +877,29 @@ public:
         : boatData(bd), logger(log) {}
 
     void HandleMsg(const tN2kMsg &N2kMsg) override {
+        // Log every PGN received for debugging
+        logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN_RECEIVED",
+            String(F("{\"pgn\":")) + String(N2kMsg.PGN) + F("}"));
+
         switch (N2kMsg.PGN) {
+            // GPS handlers (4 PGNs)
+            case 129025L:
+                HandleN2kPGN129025(N2kMsg, boatData, logger);
+                break;
+            case 129026L:
+                HandleN2kPGN129026(N2kMsg, boatData, logger);
+                break;
+            case 129029L:
+                HandleN2kPGN129029(N2kMsg, boatData, logger);
+                break;
+            case 127258L:
+                HandleN2kPGN127258(N2kMsg, boatData, logger);
+                break;
+
+            // Compass handlers (4 PGNs)
+            case 127250L:
+                HandleN2kPGN127250(N2kMsg, boatData, logger);
+                break;
             case 127251L:
                 HandleN2kPGN127251(N2kMsg, boatData, logger);
                 break;
@@ -598,9 +909,8 @@ public:
             case 127257L:
                 HandleN2kPGN127257(N2kMsg, boatData, logger);
                 break;
-            case 129029L:
-                HandleN2kPGN129029(N2kMsg, boatData, logger);
-                break;
+
+            // DST handlers (3 PGNs)
             case 128267L:
                 HandleN2kPGN128267(N2kMsg, boatData, logger);
                 break;
@@ -610,14 +920,24 @@ public:
             case 130316L:
                 HandleN2kPGN130316(N2kMsg, boatData, logger);
                 break;
+
+            // Engine handlers (2 PGNs)
             case 127488L:
                 HandleN2kPGN127488(N2kMsg, boatData, logger);
                 break;
             case 127489L:
                 HandleN2kPGN127489(N2kMsg, boatData, logger);
                 break;
+
+            // Wind handlers (1 PGN)
+            case 130306L:
+                HandleN2kPGN130306(N2kMsg, boatData, logger);
+                break;
+
             default:
-                // Ignore other PGNs
+                // Log ignored PGNs for debugging
+                logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN_IGNORED",
+                    String(F("{\"pgn\":")) + String(N2kMsg.PGN) + F("}"));
                 break;
         }
     }
@@ -631,17 +951,33 @@ void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogge
         return;
     }
 
-    // Extend receive message list to include our PGNs
+    // Extend receive message list to include all handled PGNs
     const unsigned long ReceiveMessages[] PROGMEM = {
+        // GPS (4 PGNs)
+        129025L,  // Position, Rapid Update
+        129026L,  // COG & SOG, Rapid Update
+        129029L,  // GNSS Position Data
+        127258L,  // Magnetic Variation
+
+        // Compass (4 PGNs)
+        127250L,  // Vessel Heading
         127251L,  // Rate of Turn
+        127252L,  // Heave
         127257L,  // Attitude
-        129029L,  // GNSS Position
+
+        // DST (3 PGNs)
         128267L,  // Water Depth
-        128259L,  // Speed
+        128259L,  // Speed (Water Referenced)
         130316L,  // Temperature Extended Range
-        127488L,  // Engine Rapid
-        127489L,  // Engine Dynamic
-        0
+
+        // Engine (2 PGNs)
+        127488L,  // Engine Parameters, Rapid Update
+        127489L,  // Engine Parameters, Dynamic
+
+        // Wind (1 PGN)
+        130306L,  // Wind Data
+
+        0  // Terminator
     };
 
     nmea2000->ExtendReceiveMessages(ReceiveMessages);
@@ -651,5 +987,5 @@ void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogge
     nmea2000->AttachMsgHandler(globalHandler);
 
     logger->broadcastLog(LogLevel::INFO, "NMEA2000", "HANDLERS_REGISTERED",
-        F("{\"count\":8,\"pgns\":[127251,127257,129029,128267,128259,130316,127488,127489]}"));
+        F("{\"count\":13,\"pgns\":[129025,129026,129029,127258,127250,127251,127252,127257,128267,128259,130316,127488,127489,130306]}"));
 }

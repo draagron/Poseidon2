@@ -35,6 +35,11 @@ void MockSerialPort::begin(unsigned long baud) {
     (void)baud;  // Suppress unused parameter warning
 }
 
+Stream* MockSerialPort::getStream() {
+    // Mock returns nullptr - no real Stream object
+    return nullptr;
+}
+
 void MockSerialPort::reset() {
     position_ = 0;
 }
