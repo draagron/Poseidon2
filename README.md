@@ -37,7 +37,7 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
   - 8 NMEA2000 PGN handlers with validation
   - Memory footprint: ~560 bytes BoatData structure
 - 🚧 **NMEA 2000** (CAN bus): PGN handlers ready, awaiting bus initialization
-- 🚧 **NMEA 0183** (Serial): Read-only sentence parsing
+- ✅ **NMEA 0183** (Serial2): Autopilot (RSA, HDM) and VHF (GGA, RMC, VTG) sentence parsing
 - 🚧 **SignalK Integration**: Real-time data streaming
 - ✅ **1-Wire Sensors**: Marine sensor interface (saildrive, battery, shore power)
 
@@ -420,6 +420,7 @@ Poseidon2/
 │   ├── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
 │   ├── R004 - OLED basic info.md        # OLED display requirements
 │   └── R005 - enhanced boatdata.md      # Enhanced BoatData requirements
+│   └── R007 - NMEA 0183 data.md         # NMEA 0183 handlers
 ├── .specify/                            # Development framework
 │   ├── memory/
 │   │   └── constitution.md              # Development principles (v1.2.0)
@@ -469,9 +470,23 @@ pio test -e native -f test_connection_loss_recovery
 ```bash
 # IMPORTANT: Update WiFi credentials in test/test_wifi_connection/test_main.cpp first!
 pio test -e esp32dev_test -f test_wifi_connection
+
+# NMEA 0183 hardware validation (requires Serial2 connection)
+pio test -e esp32dev_test -f test_nmea0183_hardware
 ```
 
 See [`test/test_wifi_connection/README.md`](test/test_wifi_connection/README.md) for hardware test setup.
+
+#### NMEA 0183 Tests
+```bash
+# All NMEA 0183 tests (contracts, integration, units - no hardware)
+pio test -e native -f test_nmea0183
+
+# Specific test groups
+pio test -e native -f test_nmea0183_contracts    # HAL interface validation
+pio test -e native -f test_nmea0183_integration  # End-to-end scenarios
+pio test -e native -f test_nmea0183_units        # Unit conversions, parsers
+```
 
 ### WebSocket Debug Logging
 
@@ -605,7 +620,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ Enhanced BoatData (R005) | 🚧 NMEA2000 Bus Initialization Pending
+**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ BoatData | ✅ Enhanced BoatData (R005) | ✅ NMEA 0183 | 🚧 NMEA 2000 In Progress
 
-**Last Updated**: 2025-10-10
-**Version**: 2.0.0 (WiFi + OLED + Loop Frequency + Enhanced BoatData)
+**Last Updated**: 2025-10-09
+**Version**: 1.1.0 (WiFi Management + OLED Display)

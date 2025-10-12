@@ -67,42 +67,11 @@ Use these commands for structured development workflows:
 - `/implement` - Execute implementation plan
 - `/constitution` - Update project constitution
 
-### Extension Workflows
-- `/speckit.bugfix` - Bug fix with regression test requirement
-- `/speckit.modify` - Modify existing feature with impact analysis
-- `/speckit.refactor` - Refactoring with metrics tracking
-- `/speckit.hotfix` - Emergency hotfix with expedited process
-- `/speckit.deprecate` - Feature deprecation with phased sunset
-
-## Constitutional Compliance
-
-**BEFORE implementing any feature**, verify against constitution principles (`.specify/memory/constitution.md`):
-1. **Hardware Abstraction** - HAL interfaces used?
-2. **Resource Management** - Static allocation, stack limits, F() macros?
-3. **QA Review Process** - Review planned?
-4. **Modular Design** - Single responsibility, dependency injection?
-5. **Network Debugging** - WebSocket logging implemented?
-6. **Always-On Operation** - No sleep modes?
-7. **Fail-Safe Operation** - Watchdog, safe mode, graceful degradation?
-
-See `.specify/templates/plan-template.md` for detailed constitution checklist.
-
-## Architecture & Key Constraints
-
-### Hardware Abstraction Layer (HAL) - CRITICAL
-All hardware interactions MUST be abstracted through interfaces:
-- Hardware dependencies isolated to HAL modules (`src/hal/`)
-- Mock implementations required for all HAL interfaces
-- Business logic must be separable from hardware I/O for testing
-- No direct GPIO/peripheral access outside HAL layer
-
-### Resource Management - NON-NEGOTIABLE
-ESP32 memory constraints require strict discipline:
-- **Static allocation preferred** - minimize heap usage to avoid fragmentation
-- **Stack monitoring** - ESP32 default is 8KB per task, stay within limits
-- **Flash tracking** - compile warnings at >80% capacity
-- **String handling** - Use `F()` macro or PROGMEM for literals; prefer char arrays over String class
-- **RTOS tasks** - Explicitly specify stack sizes
+### QA-First Review Process - NON-NEGOTIABLE
+- **All code changes** reviewed by QA subagent before merge
+- QA validates: memory safety, resource usage, error handling, Arduino best practices
+- Hardware-dependent tests kept minimal
+- Critical paths require manual human + QA approval
 
 ### Testing Strategy
 
@@ -358,50 +327,13 @@ RegisterN2kHandlers(&NMEA2000, boatData, &logger);
 
 #### Initialization
 ```cpp
-#include "hal/implementations/ESP32OneWireSensors.h"
+void setup() {
+    // ... initialization ...
 
-// In setup() after I2C initialization:
-ESP32OneWireSensors* oneWireSensors = new ESP32OneWireSensors(4);  // GPIO 4
-
-if (oneWireSensors->initialize()) {
-    Serial.println("1-Wire bus initialized successfully");
-    logger.broadcastLog(LogLevel::INFO, "Main", "ONEWIRE_INIT_SUCCESS",
-                        F("{\"bus\":\"GPIO4\"}"));
-} else {
-    Serial.println("WARNING: 1-Wire initialization failed");
-    // Graceful degradation - continue without 1-wire sensors
-}
-```
-
-#### ReactESP Event Loops (polling rates)
-```cpp
-// Saildrive polling (1 Hz)
-app.onRepeat(1000, []() {
-    if (oneWireSensors != nullptr && boatData != nullptr) {
-        SaildriveData saildriveData;
-        if (oneWireSensors->readSaildriveStatus(saildriveData)) {
-            boatData->setSaildriveData(saildriveData);
-            logger.broadcastLog(LogLevel::DEBUG, "OneWire", "SAILDRIVE_UPDATE",
-                String(F("{\"engaged\":")) + (saildriveData.saildriveEngaged ? F("true") : F("false")) + F("}"));
-        } else {
-            logger.broadcastLog(LogLevel::WARN, "OneWire", "SAILDRIVE_READ_FAILED",
-                F("{\"reason\":\"Sensor read error or CRC failure\"}"));
-        }
-    }
-});
-
-// Battery polling (0.5 Hz)
-app.onRepeat(2000, []() {
-    if (oneWireSensors != nullptr && boatData != nullptr) {
-        BatteryMonitorData batteryA, batteryB;
-        bool successA = oneWireSensors->readBatteryA(batteryA);
-        bool successB = oneWireSensors->readBatteryB(batteryB);
-
-        if (successA && successB) {
-            BatteryData batteryData;
-            // ... populate batteryData from batteryA and batteryB
-            boatData->setBatteryData(batteryData);
-            logger.broadcastLog(LogLevel::DEBUG, "OneWire", "BATTERY_UPDATE", ...);
+    // Display refresh loops - 1s animation, 5s status
+    app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {
+        if (displayManager != nullptr) {
+            displayManager->updateAnimationIcon();
         }
     }
 });
@@ -531,3 +463,201 @@ double speed = boatData.dst.measuredBoatSpeed;
 - Watchdog timer enabled
 - OTA updates enabled
 - Optimizations on
+
+## NMEA 0183 Integration
+
+### Overview
+The NMEA 0183 handler parses sentences from autopilot (AP) and VHF radio (VH) devices, converting data to BoatData format and updating the centralized repository. Supports 5 sentence types: RSA (rudder angle), HDM (magnetic heading), GGA (GPS position), RMC (GPS with COG/SOG/variation), and VTG (true/magnetic COG with calculated variation).
+
+### Supported Devices and Sentences
+
+**Autopilot (AP talker ID)**:
+- **APRSA**: Rudder Sensor Angle → Updates `BoatData.RudderData.steeringAngle`
+- **APHDM**: Heading Magnetic → Updates `BoatData.CompassData.magneticHeading`
+
+**VHF Radio (VH talker ID)**:
+- **VHGGA**: GPS Fix Data → Updates `BoatData.GPSData` (latitude, longitude)
+- **VHRMC**: Recommended Minimum Navigation → Updates GPS position, COG, SOG, variation, true heading
+- **VHVTG**: Track Made Good → Updates COG, SOG; calculates variation from true/magnetic COG difference
+
+**All other talker IDs and sentence types are silently ignored** (no logging, no error counting).
+
+### Integration Pattern
+
+**Initialization Sequence** (in `main.cpp`):
+```cpp
+// 1. Initialize Serial2 for NMEA 0183 (4800 baud, 8N1)
+Serial2.begin(4800, SERIAL_8N1, 25, 27); // RX=GPIO25, TX=GPIO27 (SH-ESP32)
+
+// 2. Create ESP32 Serial Port adapter (HAL)
+ISerialPort* serialPort = new ESP32SerialPort(&Serial2);
+
+// 3. Create NMEA0183 handler with BoatData reference
+NMEA0183Handler* nmea0183Handler = new NMEA0183Handler(serialPort, boatData);
+
+// 4. Register source identifiers with BoatData prioritizer
+boatData->registerSource("NMEA0183-AP", SensorType::COMPASS, 1.0); // 1 Hz typical
+boatData->registerSource("NMEA0183-VH", SensorType::GPS, 1.0);     // 1 Hz typical
+
+// 5. Add ReactESP event loop for sentence processing (10ms polling)
+reactESP.onRepeat(10, [nmea0183Handler]() {
+    nmea0183Handler->processSentences();
+});
+```
+
+### Source Prioritization
+
+NMEA 0183 sources integrate with BoatData's multi-source prioritization:
+- **Source IDs**: "NMEA0183-AP" (autopilot), "NMEA0183-VH" (VHF radio)
+- **Update frequency**: ~1 Hz typical for NMEA 0183 sources
+- **Automatic priority**: NMEA 2000 sources (10 Hz) naturally take precedence over NMEA 0183 (1 Hz)
+- **Failover**: If NMEA 2000 source becomes stale (>5 seconds), system automatically falls back to NMEA 0183
+
+Example: If both NMEA 2000 GPS (10 Hz) and VHGGA (1 Hz) are available, BoatData uses NMEA 2000 data. If NMEA 2000 GPS fails, system automatically switches to VHGGA data.
+
+### Unit Conversion
+
+All NMEA 0183 data is automatically converted to BoatData target units:
+
+| Data Type | NMEA 0183 Unit | BoatData Unit | Conversion |
+|-----------|----------------|---------------|------------|
+| Heading angles | Degrees (0-360) | Radians (0-2π) | `angle * DEG_TO_RAD` |
+| Wind angles | Degrees (-180-180) | Radians (-π to π) | `angle * DEG_TO_RAD` |
+| GPS coordinates | Degrees-minutes (DDMM.MMMM) | Decimal degrees | Extract degrees/minutes, convert |
+| Speed (SOG) | Meters/second | Knots | `m_s * 1.94384` |
+| Course (COG) | Degrees (0-360) | Radians (0-2π) | `angle * DEG_TO_RAD` |
+| Variation | Degrees | Radians | `angle * DEG_TO_RAD` |
+
+### Error Handling
+
+**Graceful Degradation** (FR-024, FR-025, FR-026, FR-032):
+- **Invalid checksum**: Sentence silently discarded, no logging
+- **Malformed sentence**: Silently discarded, no logging
+- **Out-of-range values**: Sentence rejected, BoatData not updated
+  - Rudder angle: -90° to +90°
+  - Latitude: -90° to +90°
+  - Longitude: -180° to +180°
+  - Variation: -30° to +30°
+  - Speed: 0 to 100 knots
+  - Heading: 0° to 360°
+- **Buffer overflow**: FIFO drop oldest data, continue processing
+
+**No Error Counters**: Per user requirement, invalid sentences do not increment error counters or generate logs. System continues normal operation without indication of discarded data.
+
+### Performance Constraints
+
+- **Processing budget**: ≤50ms per sentence (FR-027)
+- **Baud rate**: 4800 bps (NMEA 0183 standard)
+- **Update rate**: ~1 Hz typical (7 Hz max burst in practice)
+- **Non-blocking**: ReactESP 10ms polling loop, no blocking operations
+
+### Memory Footprint
+
+**Static Allocation**:
+- Sentence buffer: 82 bytes (NMEA max length)
+- Handler state: ~50 bytes (message handlers, flags)
+- ISerialPort adapter: 8 bytes (pointer wrapper)
+- **Total RAM**: ~140 bytes (0.04% of ESP32 320KB RAM)
+
+**Flash Impact**:
+- Parser functions: ~8KB (5 handlers + custom RSA)
+- Unit conversion utilities: ~2KB
+- HAL interfaces: ~1KB
+- **Total Flash**: ~15KB production (~0.8% of 1.9MB partition)
+
+**Constitutional Compliance**: ✓ Well under resource limits (Principle II)
+
+### Testing
+
+**Run all NMEA 0183 tests** (contracts, integration, units):
+```bash
+# All native tests (no hardware required)
+pio test -e native -f test_nmea0183
+
+# Specific test groups
+pio test -e native -f test_nmea0183_contracts    # HAL interface validation
+pio test -e native -f test_nmea0183_integration  # End-to-end scenarios
+pio test -e native -f test_nmea0183_units        # Unit conversions, parsers
+
+# Hardware validation (ESP32 required)
+pio test -e esp32dev_test -f test_nmea0183_hardware
+```
+
+**Hardware Test Requirements**:
+- ESP32 with Serial2 connected (GPIO 25/27 on SH-ESP32)
+- NMEA 0183 sentence source (GPS simulator, autopilot, or loopback)
+- Optional: TX-RX loopback for self-test mode
+
+### WebSocket Log Monitoring
+
+Monitor NMEA 0183 processing events:
+```bash
+# Activate Python virtual environment
+source src/helpers/websocket_env/bin/activate
+
+# Connect to WebSocket logs
+python3 src/helpers/ws_logger.py <ESP32_IP>
+
+# Filter for NMEA events
+python3 src/helpers/ws_logger.py <ESP32_IP> --filter NMEA
+```
+
+**Log Levels**:
+- **DEBUG**: Valid sentence processed (talker ID, sentence type, data extracted)
+- **WARN**: Out-of-range value rejected (sentence details, reason)
+- **ERROR**: Unexpected handler failure (should not occur in normal operation)
+
+**Note**: Invalid checksums and malformed sentences are silently discarded per FR-024/FR-025 (no logs generated).
+
+### Troubleshooting
+
+**No data from NMEA 0183 devices**:
+1. Verify Serial2 initialization: 4800 baud, GPIO 25 (RX), GPIO 27 (TX)
+2. Check physical wiring: NMEA TX → ESP32 GPIO25, common ground
+3. Monitor WebSocket logs for sentence processing (DEBUG level)
+4. Test with loopback: Connect GPIO 25 ↔ GPIO 27, send test sentence
+
+**Data not updating BoatData**:
+1. Verify talker ID: Only AP and VH are processed
+2. Check sentence type: Only RSA, HDM, GGA, RMC, VTG supported
+3. Verify data ranges: Out-of-range values silently rejected
+4. Check source registration: "NMEA0183-AP" and "NMEA0183-VH" must be registered
+
+**NMEA 0183 data ignored (NMEA 2000 preferred)**:
+- **Expected behavior**: NMEA 2000 sources (10 Hz) automatically prioritized over NMEA 0183 (1 Hz)
+- Verify with BoatData diagnostics: Check `activeSource` for each sensor type
+- NMEA 0183 will be used only if NMEA 2000 source is unavailable or stale (>5 seconds)
+
+**Processing time exceeds 50ms budget**:
+1. Monitor WebSocket logs for "PROCESSING_TIME" warnings
+2. Check for sentence bursts (>7 sentences/second)
+3. Verify no blocking operations in handler code
+4. Review ReactESP loop timing (10ms interval)
+
+### Custom RSA Parser
+
+The RSA (Rudder Sensor Angle) sentence is proprietary and not included in the standard NMEA0183 library. Custom parser implemented following library patterns:
+
+**RSA Sentence Format**: `$APRSA,<starboard_angle>,A,<port_angle>,V*<checksum>`
+- Field 1: Starboard rudder angle (degrees, positive = starboard)
+- Field 2: Starboard status (A=valid, V=invalid)
+- Field 3: Port rudder angle (degrees, positive = starboard)
+- Field 4: Port status (A=valid, V=invalid)
+
+**Implementation**: See `src/utils/NMEA0183Parsers.cpp` for custom `NMEA0183ParseRSA()` function.
+
+### HAL Abstraction
+
+**ISerialPort Interface** (`src/hal/interfaces/ISerialPort.h`):
+- Abstracts Serial2 hardware for testability
+- Methods: `int available()`, `int read()`, `void begin(unsigned long baud)`
+- Mock implementation: `MockSerialPort` for native tests
+- ESP32 implementation: `ESP32SerialPort` wraps `HardwareSerial`
+
+**Benefits**:
+- All NMEA parsing logic testable on native platform (no ESP32 required)
+- Hardware tests minimal (only Serial2 timing validation)
+- Follows constitutional HAL principle (Principle I)
+
+---
+**NMEA 0183 Handler Version**: 1.0.0 | **Last Updated**: 2025-10-11
