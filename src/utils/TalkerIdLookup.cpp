@@ -103,8 +103,8 @@ const char* getTalkerDescription(const char* talkerId) {
     // Linear search through PROGMEM table
     for (int i = 0; ; i++) {
         char tableId[3];
-        // Read talker ID from PROGMEM
-        strcpy_P(tableId, (const char*)pgm_read_ptr(&talkerTable[i].id));
+        // Read talker ID from PROGMEM (id is inline array, not pointer)
+        strcpy_P(tableId, talkerTable[i].id);
         const char* tableDescription = (const char*)pgm_read_ptr(&talkerTable[i].description);
 
         // Check for sentinel (end of table)
