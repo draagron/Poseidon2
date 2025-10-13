@@ -294,6 +294,14 @@ void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
     double Range;
 
     if (ParseN2kPGN128267(N2kMsg, SID, DepthBelowTransducer, Offset, Range)) {
+        // Record source statistics BEFORE checking if data is valid
+        // This ensures sources are tracked even when sending N/A values
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::DST, "PGN128267", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Check if depth is valid
         if (N2kIsNA(DepthBelowTransducer)) {
             logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN128267_NA",
@@ -325,13 +333,6 @@ void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setSpeedData(dst);
-
-        // Record source statistics
-        if (registry != nullptr) {
-            char sourceId[20];
-            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
-            registry->recordUpdate(CategoryType::DST, "PGN128267", sourceId, ProtocolType::NMEA2000);
-        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN128267_UPDATE",
