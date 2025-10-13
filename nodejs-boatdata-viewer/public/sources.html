@@ -474,22 +474,27 @@
             console.log('Received full snapshot:', message);
             sources = {};
 
-            if (message.categories && Array.isArray(message.categories)) {
-                message.categories.forEach(category => {
-                    if (category.messageTypes && Array.isArray(category.messageTypes)) {
-                        category.messageTypes.forEach(messageType => {
-                            if (messageType.sources && Array.isArray(messageType.sources)) {
-                                messageType.sources.forEach(source => {
-                                    const key = `${source.sourceId}`;
-                                    sources[key] = {
-                                        ...source,
-                                        category: category.category,
-                                        messageTypeId: messageType.messageTypeId
-                                    };
-                                });
-                            }
-                        });
-                    }
+            if (message.sources && typeof message.sources === 'object') {
+                // Iterate through categories (keys like "GPS", "Compass", etc.)
+                Object.keys(message.sources).forEach(categoryName => {
+                    const categoryData = message.sources[categoryName];
+
+                    // Iterate through message types (keys like "PGN129025", "RSA", etc.)
+                    Object.keys(categoryData).forEach(messageTypeId => {
+                        const sourcesArray = categoryData[messageTypeId];
+
+                        // Iterate through sources in this message type
+                        if (Array.isArray(sourcesArray)) {
+                            sourcesArray.forEach(source => {
+                                const key = `${source.sourceId}`;
+                                sources[key] = {
+                                    ...source,
+                                    category: categoryName,
+                                    messageTypeId: messageTypeId
+                                };
+                            });
+                        }
+                    });
                 });
             }
 
@@ -500,20 +505,21 @@
         function handleDeltaUpdate(message) {
             console.log('Received delta update:', message);
 
-            if (message.updates && Array.isArray(message.updates)) {
-                message.updates.forEach(update => {
-                    const key = `${update.sourceId}`;
+            if (message.changes && Array.isArray(message.changes)) {
+                message.changes.forEach(change => {
+                    const key = `${change.sourceId}`;
                     if (sources[key]) {
                         // Update existing source
-                        if (update.frequency !== undefined) sources[key].frequency = update.frequency;
-                        if (update.timeSinceLast !== undefined) sources[key].timeSinceLast = update.timeSinceLast;
-                        if (update.isStale !== undefined) sources[key].isStale = update.isStale;
+                        if (change.frequency !== undefined) sources[key].frequency = change.frequency;
+                        if (change.timeSinceLast !== undefined) sources[key].timeSinceLast = change.timeSinceLast;
+                        if (change.isStale !== undefined) sources[key].isStale = change.isStale;
 
                         updateSourceRow(sources[key]);
                     } else {
-                        // New source discovered
-                        sources[key] = update;
-                        renderAllSources();
+                        // New source discovered in delta (shouldn't happen but handle it)
+                        console.warn('New source discovered in delta update:', change.sourceId);
+                        // We need category and messageTypeId to render properly
+                        // For now, just log a warning - fullSnapshot should provide these
                     }
                 });
             }
