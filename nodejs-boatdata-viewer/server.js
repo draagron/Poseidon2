@@ -65,11 +65,9 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// WebSocket Server for /boatdata (for browser clients)
-const wss = new WebSocket.Server({ server, path: '/boatdata' });
-
-// WebSocket Server for /source-stats (for browser clients)
-const wssSourceStats = new WebSocket.Server({ server, path: '/source-stats' });
+// WebSocket Servers (using noServer for manual upgrade handling)
+const wss = new WebSocket.Server({ noServer: true });
+const wssSourceStats = new WebSocket.Server({ noServer: true });
 
 // Track connected browser clients
 const browserClients = new Set();
@@ -86,6 +84,7 @@ let esp32SourceStatsClient = null;
 let esp32SourceStatsConnected = false;
 let reconnectSourceStatsTimer = null;
 let lastSourceStatsMessageTime = null;
+let cachedFullSnapshot = null; // Cache last fullSnapshot for new clients
 
 const serverStartTime = Date.now();
 
@@ -120,6 +119,12 @@ wssSourceStats.on('connection', (ws, req) => {
 
     // Send connection status to new client
     sendSourceStatsStatusUpdate(ws);
+
+    // Send cached fullSnapshot to new client if available
+    if (cachedFullSnapshot && ws.readyState === WebSocket.OPEN) {
+        console.log(`[SOURCE-STATS] Sending cached fullSnapshot to ${clientId} (${cachedFullSnapshot.length} bytes)`);
+        ws.send(cachedFullSnapshot);
+    }
 
     // Handle browser client disconnect
     ws.on('close', () => {
@@ -251,6 +256,13 @@ function connectToESP32() {
         esp32Client.on('message', (data) => {
             lastMessageTime = Date.now();
 
+            // Debug: log message receipt (limit spam to every 10th message)
+            if (!global.esp32MsgCount) global.esp32MsgCount = 0;
+            global.esp32MsgCount++;
+            if (global.esp32MsgCount % 10 === 1) {
+                console.log(`[ESP32] Received message ${global.esp32MsgCount} (${data.length} bytes), relaying to ${browserClients.size} clients`);
+            }
+
             // Relay message to all browser clients
             broadcastToBrowsers(data.toString());
         });
@@ -321,12 +333,32 @@ function connectToESP32SourceStats() {
         esp32SourceStatsClient.on('message', (data) => {
             lastSourceStatsMessageTime = Date.now();
 
+            // Cache fullSnapshot messages for new clients
+            const dataStr = data.toString();
+            try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.type === 'fullSnapshot') {
+                    cachedFullSnapshot = dataStr;
+                    console.log(`[SOURCE-STATS] Cached fullSnapshot (${data.length} bytes) for new clients`);
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+
+            // Debug: log message receipt (limit spam to every 10th message)
+            if (!global.sourceStatsMsgCount) global.sourceStatsMsgCount = 0;
+            global.sourceStatsMsgCount++;
+            if (global.sourceStatsMsgCount % 10 === 1) {
+                console.log(`[SOURCE-STATS] Received message ${global.sourceStatsMsgCount} (${data.length} bytes), relaying to ${sourceStatsClients.size} clients`);
+            }
+
             // Relay message to all browser clients
-            broadcastToSourceStatsClients(data.toString());
+            broadcastToSourceStatsClients(dataStr);
         });
 
         esp32SourceStatsClient.on('close', () => {
             esp32SourceStatsConnected = false;
+            cachedFullSnapshot = null; // Clear cache on disconnect
             console.log('[SOURCE-STATS] ✗ Connection closed');
 
             // Notify browser clients
@@ -406,6 +438,23 @@ function shutdown() {
 // Handle process signals
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+// Manual WebSocket upgrade handling for multiple WebSocket servers
+server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+
+    if (pathname === '/boatdata') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else if (pathname === '/source-stats') {
+        wssSourceStats.handleUpgrade(request, socket, head, (ws) => {
+            wssSourceStats.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
 
 // Start HTTP server
 server.listen(config.server.port, () => {

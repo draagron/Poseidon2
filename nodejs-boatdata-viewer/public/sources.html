@@ -440,8 +440,8 @@
 
     <script>
         // Configuration
-        const ESP32_IP = window.location.hostname;
-        const WS_ENDPOINT = `ws://${ESP32_IP}/source-stats`;
+        const ESP32_HOST = window.location.host; // hostname + port
+        const WS_ENDPOINT = `ws://${ESP32_HOST}/source-stats`;
 
         // Global state
         let ws = null;
@@ -508,6 +508,10 @@
                     break;
                 case 'sourceRemoved':
                     handleSourceRemoved(message);
+                    break;
+                case 'status':
+                    // Status message from proxy server - can be ignored or logged
+                    console.log('Proxy server status:', message.esp32Connected ? 'Connected to ESP32' : 'Disconnected from ESP32');
                     break;
                 default:
                     console.warn('Unknown message type:', message.type);
