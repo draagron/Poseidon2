@@ -326,3 +326,7 @@ bool BoatData::validateAndUpdateCompass(double trueHdg, double magHdg, double va
 
     return true;
 }
+
+BoatDataStructure* BoatData::getDataStructure() {
+    return &data;
+}
