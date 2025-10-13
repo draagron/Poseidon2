@@ -182,6 +182,13 @@ void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setCompassData(compass);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::COMPASS, "PGN127257", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127257_UPDATE",
             String(F("{\"heel\":")) + compass.heelAngle + F(",\"pitch\":") +
@@ -254,6 +261,13 @@ void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setGPSData(gps);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::GPS, "PGN129029", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129029_UPDATE",
             String(F("{\"lat\":")) + Latitude + F(",\"lon\":") + Longitude +
@@ -312,6 +326,13 @@ void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setSpeedData(dst);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::DST, "PGN128267", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN128267_UPDATE",
             String(F("{\"depth\":")) + depth + F(",\"offset\":") + Offset +
@@ -364,6 +385,13 @@ void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setSpeedData(dst);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::DST, "PGN128259", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN128259_UPDATE",
@@ -430,6 +458,13 @@ void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setSpeedData(dst);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::DST, "PGN130316", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN130316_UPDATE",
             String(F("{\"sea_temp_c\":")) + tempCelsius + F(",\"valid\":") +
@@ -482,6 +517,13 @@ void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setEngineData(engine);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::ENGINE, "PGN127488", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127488_UPDATE",
@@ -575,6 +617,13 @@ void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setEngineData(engine);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::ENGINE, "PGN127489", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127489_UPDATE",
@@ -695,6 +744,13 @@ void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setGPSData(gps);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::GPS, "PGN129026", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129026_UPDATE",
             String(F("{\"cog_rad\":")) + COG + F(",\"sog_knots\":") + SOGKnots + F("}"));
@@ -810,6 +866,13 @@ void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setGPSData(gps);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::GPS, "PGN127258", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127258_UPDATE",
             String(F("{\"variation_rad\":")) + Variation + F("}"));
@@ -876,6 +939,13 @@ void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setWindData(wind);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::WIND, "PGN130306", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN130306_UPDATE",
