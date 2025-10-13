@@ -136,7 +136,7 @@ void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127257 - Attitude (Heel, Pitch, Heave)
 // ============================================================================
 
-void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -199,7 +199,7 @@ void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 129029 - GNSS Position Data (Enhanced for Variation)
 // ============================================================================
 
-void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -271,7 +271,7 @@ void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 128267 - Water Depth
 // ============================================================================
 
-void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -329,7 +329,7 @@ void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 128259 - Speed (Water Referenced)
 // ============================================================================
 
-void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -382,7 +382,7 @@ void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 130316 - Temperature Extended Range
 // ============================================================================
 
-void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -447,7 +447,7 @@ void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127488 - Engine Parameters, Rapid Update
 // ============================================================================
 
-void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char EngineInstance;
@@ -500,7 +500,7 @@ void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127489 - Engine Parameters, Dynamic
 // ============================================================================
 
-void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char EngineInstance;
@@ -653,7 +653,7 @@ void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 129026 - COG & SOG, Rapid Update
 // ============================================================================
 
-void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -774,7 +774,7 @@ void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127258 - Magnetic Variation
 // ============================================================================
 
-void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -826,7 +826,7 @@ void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 130306 - Wind Data
 // ============================================================================
 
-void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
