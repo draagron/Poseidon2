@@ -688,6 +688,74 @@ python3 src/helpers/ws_logger.py <ESP32_IP> --reconnect
 {"timestamp":1234567895,"level":"INFO","component":"WiFiManager","event":"CONNECTION_SUCCESS","data":{"ssid":"HomeNetwork","ip":"192.168.1.100"}}
 ```
 
+## More logging 
+
+### WebSocket Log Filtering
+
+To prevent queue overflow and reduce message volume, configure runtime log filters via HTTP endpoint:
+
+**Configure filter (applies to all WebSocket clients)**:
+```bash
+# Set DEBUG level for NMEA2000 component only
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000"
+
+# Filter by event prefix (all PGN130306 events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&events=PGN130306_"
+
+# Multiple components (comma-separated)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=NMEA2000,GPS,OneWire"
+
+# Multiple event prefixes
+curl -X POST "http://<ESP32_IP>/log-filter?level=WARN&events=ERROR,FAILED,OUT_OF_RANGE"
+
+# Combine filters (AND logic)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000&events=PGN130306_"
+
+# Reset to defaults (INFO level, all components/events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=&events="
+```
+
+**Query current filter**:
+```bash
+# GET request returns current filter configuration
+curl -X GET "http://<ESP32_IP>/log-filter"
+# Response: {"level":"DEBUG","components":"NMEA2000","events":"PGN130306_"}
+```
+
+**Filter behavior**:
+- **Single shared filter**: Applies to all connected WebSocket clients
+- **Default filter**: INFO level, all components, all events
+- **Empty parameter**: Matches all (e.g., `components=` matches all components)
+- **Level filtering**: Messages below minimum level are dropped
+- **Component filtering**: Exact substring match in comma-separated list
+- **Event filtering**: Prefix match (e.g., `PGN130306_` matches `PGN130306_UPDATE`, `PGN130306_OUT_OF_RANGE`)
+- **AND logic**: Message must match level AND component AND event filters
+- **Early exit**: Filtered messages never built or queued (reduces CPU/memory usage)
+- **Automatic persistence**: Filter settings automatically saved to `/log-filter.json` on every change
+- **Persists across reboots**: Filter configuration loaded from LittleFS on startup
+
+**Common filter examples**:
+```bash
+# Monitor high-frequency NMEA2000 updates only
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&components=NMEA2000"
+
+# Show only errors and warnings from all components
+curl -X POST "http://192.168.1.100/log-filter?level=WARN"
+
+# Debug specific PGN (Wind Data)
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&events=PGN130306_"
+
+# Monitor WiFi and WebServer events
+curl -X POST "http://192.168.1.100/log-filter?level=INFO&components=WiFi,WebServer"
+
+# Production mode (errors only)
+curl -X POST "http://192.168.1.100/log-filter?level=ERROR"
+```
+
+**Memory footprint**:
+- **RAM**: 256 bytes (single LogFilter struct, static allocation)
+- **Flash**: ~2KB code, `/log-filter.json` file (~100 bytes)
+
 ## Troubleshooting
 
 ### Device Not Connecting to WiFi

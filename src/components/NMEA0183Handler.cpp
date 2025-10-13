@@ -31,8 +31,8 @@ void NMEA0183MsgHandler(const tNMEA0183Msg &msg) {
 }
 
 NMEA0183Handler::NMEA0183Handler(tNMEA0183* nmea0183, ISerialPort* serialPort,
-                                 BoatData* boatData, WebSocketLogger* logger)
-    : nmea0183_(nmea0183), serialPort_(serialPort), boatData_(boatData), logger_(logger) {
+                                 BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry)
+    : nmea0183_(nmea0183), serialPort_(serialPort), boatData_(boatData), logger_(logger), registry_(registry) {
     s_instance = this;  // Register this instance for callbacks
 }
 

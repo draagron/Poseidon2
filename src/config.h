@@ -34,4 +34,10 @@
 #define CAN_TX_PIN 32                // GPIO32 for CAN TX
 #define CAN_RX_PIN 34                // GPIO34 for CAN RX
 
+// Source Statistics Configuration
+#define MAX_SOURCES 50               // Maximum number of concurrent NMEA sources
+#define SOURCE_STALE_THRESHOLD_MS 5000       // 5 seconds without update = stale
+#define SOURCE_GC_THRESHOLD_MS 300000        // 5 minutes = eligible for garbage collection
+#define WEBSOCKET_UPDATE_INTERVAL_MS 500     // 500ms batch interval for delta updates
+
 #endif // CONFIG_H

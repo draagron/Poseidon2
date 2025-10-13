@@ -42,6 +42,9 @@
 #include "components/NMEA0183Handler.h"
 #include "components/OneWireSensorPoller.h"
 #include "components/BoatDataSerializer.h"
+#include "components/SourceRegistry.h"
+#include "components/SourceStatsHandler.h"
+#include "components/SourceStatsSerializer.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -103,6 +106,11 @@ tNMEA2000* nmea2000 = nullptr;
 
 // WebUI components (Feature 011-simple-webui-as)
 AsyncWebSocket wsBoatData("/boatdata");
+
+// Source Statistics components (Feature 012-sources-stats-and)
+SourceRegistry sourceRegistry;
+AsyncWebSocket wsSourceStats("/source-stats");
+SourceStatsHandler* sourceStatsHandler = nullptr;
 
 // Reboot management
 bool rebootScheduled = false;
@@ -192,6 +200,13 @@ void onWiFiConnected() {
 
         // Setup /boatdata WebSocket endpoint (Feature 011: US1)
         setupBoatDataWebSocket(webServer->getServer());
+
+        // Setup /source-stats WebSocket endpoint (Feature 012: US1)
+        sourceStatsHandler = new SourceStatsHandler(&wsSourceStats, &sourceRegistry, &logger);
+        sourceStatsHandler->begin();
+        webServer->getServer()->addHandler(&wsSourceStats);
+        logger.broadcastLog(LogLevel::INFO, "SourceStatsHandler", "ENDPOINT_REGISTERED",
+                            F("{\"path\":\"/source-stats\"}"));
 
         // Setup /stream HTTP endpoint for HTML dashboard (Feature 011: US2)
         webServer->getServer()->on("/stream", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -544,7 +559,7 @@ void setup() {
     // Initialize Serial2 with explicit GPIO pins: RX=25, TX=27 (SH-ESP32 board)
     serial0183 = new ESP32SerialPort(&Serial2, 25, 27);
     nmea0183 = new tNMEA0183();
-    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
+    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger, &sourceRegistry);
 
     // Initialize Serial2 at 38400 baud for NMEA 0183
     nmea0183Handler->init();
@@ -624,9 +639,15 @@ void setup() {
 
     // T029: Register NMEA2000 message handlers
     if (nmea2000 != nullptr) {
-        RegisterN2kHandlers(nmea2000, boatData, &logger);
+        RegisterN2kHandlers(nmea2000, boatData, &logger, &sourceRegistry);
         Serial.println(F("NMEA2000 handlers registered - processing 13 PGNs"));
     }
+
+    // Feature 012: Initialize source statistics tracking
+    Serial.println(F("Initializing source statistics tracking..."));
+    sourceRegistry.init();
+    logger.broadcastLog(LogLevel::INFO, "SourceRegistry", "INITIALIZED",
+                        F("{\"maxSources\":50,\"messageTypes\":19}"));
 
     // T030: Register NMEA2000 sources with BoatData prioritizer
     // Note: Currently only GPS and COMPASS sensor types are supported in SourcePrioritizer
@@ -715,6 +736,25 @@ void setup() {
 
     logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "BROADCAST_TIMER_STARTED",
                         "{\"interval_ms\":1000,\"frequency_hz\":1}");
+
+    // Feature 012: Source statistics update loops
+    // T018: Update staleness flags and send delta updates every 500ms
+    app.onRepeat(500, [&]() {
+        sourceRegistry.updateStaleFlags();
+
+        if (sourceRegistry.hasChanges() && sourceStatsHandler != nullptr) {
+            sourceStatsHandler->sendDeltaUpdate();
+            sourceRegistry.clearChangeFlag();
+        }
+    });
+
+    // T018: Garbage collect stale sources every 60 seconds
+    app.onRepeat(60000, [&]() {
+        sourceRegistry.garbageCollect();
+    });
+
+    logger.broadcastLog(LogLevel::INFO, "SourceStatsHandler", "TIMERS_STARTED",
+                        F("{\"staleness_update_ms\":500,\"gc_interval_ms\":60000}"));
 
     // T028: Display refresh loops - 1s animation, 5s status
     app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {

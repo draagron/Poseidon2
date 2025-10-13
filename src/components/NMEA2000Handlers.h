@@ -48,6 +48,7 @@
 #include "../components/BoatData.h"
 #include "../utils/WebSocketLogger.h"
 #include "../utils/DataValidation.h"
+#include "../components/SourceRegistry.h"
 
 /**
  * @brief Handle PGN 127251 - Rate of Turn
@@ -59,7 +60,7 @@
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127252 - Heave
@@ -89,7 +90,7 @@ void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @see DataValidation::clampHeave
  * @see DataValidation::isValidHeave
  */
-void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127257 - Attitude
@@ -106,7 +107,7 @@ void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 129029 - GNSS Position Data (Enhanced)
@@ -118,7 +119,7 @@ void HandleN2kPGN127257(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 128267 - Water Depth
@@ -130,7 +131,7 @@ void HandleN2kPGN129029(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 128259 - Speed (Water Referenced)
@@ -142,7 +143,7 @@ void HandleN2kPGN128267(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 130316 - Temperature Extended Range
@@ -154,7 +155,7 @@ void HandleN2kPGN128259(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127488 - Engine Parameters, Rapid Update
@@ -166,7 +167,7 @@ void HandleN2kPGN130316(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127489 - Engine Parameters, Dynamic
@@ -178,7 +179,7 @@ void HandleN2kPGN127488(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 129025 - Position, Rapid Update
@@ -190,7 +191,7 @@ void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 129026 - COG & SOG, Rapid Update
@@ -202,7 +203,7 @@ void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127250 - Vessel Heading
@@ -214,7 +215,7 @@ void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 127258 - Magnetic Variation
@@ -226,7 +227,7 @@ void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Handle PGN 130306 - Wind Data
@@ -239,7 +240,7 @@ void HandleN2kPGN127258(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance to update
  * @param logger WebSocket logger for debug output
  */
-void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger);
+void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 /**
  * @brief Register all PGN handlers with NMEA2000 library
@@ -251,6 +252,6 @@ void HandleN2kPGN130306(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
  * @param boatData BoatData instance for handler callbacks
  * @param logger WebSocket logger for handler callbacks
  */
-void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogger* logger);
+void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry);
 
 #endif // NMEA2000_HANDLERS_H

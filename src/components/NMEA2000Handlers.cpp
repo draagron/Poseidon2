@@ -18,7 +18,7 @@
 // PGN 127251 - Rate of Turn
 // ============================================================================
 
-void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -52,6 +52,13 @@ void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
         // Store updated data
         boatData->setCompassData(compass);
 
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::COMPASS, "PGN127251", sourceId, ProtocolType::NMEA2000);
+        }
+
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127251_UPDATE",
             String(F("{\"rateOfTurn\":")) + rateOfTurn + F(",\"rad_per_sec\":true}"));
@@ -68,7 +75,7 @@ void HandleN2kPGN127251(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127252 - Heave
 // ============================================================================
 
-void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -105,6 +112,13 @@ void HandleN2kPGN127252(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setCompassData(compass);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::COMPASS, "PGN127252", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127252_UPDATE",
@@ -580,7 +594,7 @@ void HandleN2kPGN127489(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 129025 - Position, Rapid Update
 // ============================================================================
 
-void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     double Latitude, Longitude;
@@ -615,6 +629,13 @@ void HandleN2kPGN129025(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setGPSData(gps);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::GPS, "PGN129025", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN129025_UPDATE",
@@ -690,7 +711,7 @@ void HandleN2kPGN129026(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 // PGN 127250 - Vessel Heading
 // ============================================================================
 
-void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger) {
+void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (boatData == nullptr || logger == nullptr) return;
 
     unsigned char SID;
@@ -728,6 +749,13 @@ void HandleN2kPGN127250(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLogg
 
         // Store updated data
         boatData->setCompassData(compass);
+
+        // Record source statistics
+        if (registry != nullptr) {
+            char sourceId[20];
+            snprintf(sourceId, sizeof(sourceId), "NMEA2000-%u", N2kMsg.Source);
+            registry->recordUpdate(CategoryType::COMPASS, "PGN127250", sourceId, ProtocolType::NMEA2000);
+        }
 
         // Log update (DEBUG level)
         logger->broadcastLog(LogLevel::DEBUG, "NMEA2000", "PGN127250_UPDATE",
@@ -871,10 +899,11 @@ class N2kBoatDataHandler : public tNMEA2000::tMsgHandler {
 private:
     BoatData* boatData;
     WebSocketLogger* logger;
+    SourceRegistry* registry;
 
 public:
-    N2kBoatDataHandler(BoatData* bd, WebSocketLogger* log)
-        : boatData(bd), logger(log) {}
+    N2kBoatDataHandler(BoatData* bd, WebSocketLogger* log, SourceRegistry* reg)
+        : boatData(bd), logger(log), registry(reg) {}
 
     void HandleMsg(const tN2kMsg &N2kMsg) override {
         // Log every PGN received for debugging
@@ -884,54 +913,54 @@ public:
         switch (N2kMsg.PGN) {
             // GPS handlers (4 PGNs)
             case 129025L:
-                HandleN2kPGN129025(N2kMsg, boatData, logger);
+                HandleN2kPGN129025(N2kMsg, boatData, logger, registry);
                 break;
             case 129026L:
-                HandleN2kPGN129026(N2kMsg, boatData, logger);
+                HandleN2kPGN129026(N2kMsg, boatData, logger, registry);
                 break;
             case 129029L:
-                HandleN2kPGN129029(N2kMsg, boatData, logger);
+                HandleN2kPGN129029(N2kMsg, boatData, logger, registry);
                 break;
             case 127258L:
-                HandleN2kPGN127258(N2kMsg, boatData, logger);
+                HandleN2kPGN127258(N2kMsg, boatData, logger, registry);
                 break;
 
             // Compass handlers (4 PGNs)
             case 127250L:
-                HandleN2kPGN127250(N2kMsg, boatData, logger);
+                HandleN2kPGN127250(N2kMsg, boatData, logger, registry);
                 break;
             case 127251L:
-                HandleN2kPGN127251(N2kMsg, boatData, logger);
+                HandleN2kPGN127251(N2kMsg, boatData, logger, registry);
                 break;
             case 127252L:
-                HandleN2kPGN127252(N2kMsg, boatData, logger);
+                HandleN2kPGN127252(N2kMsg, boatData, logger, registry);
                 break;
             case 127257L:
-                HandleN2kPGN127257(N2kMsg, boatData, logger);
+                HandleN2kPGN127257(N2kMsg, boatData, logger, registry);
                 break;
 
             // DST handlers (3 PGNs)
             case 128267L:
-                HandleN2kPGN128267(N2kMsg, boatData, logger);
+                HandleN2kPGN128267(N2kMsg, boatData, logger, registry);
                 break;
             case 128259L:
-                HandleN2kPGN128259(N2kMsg, boatData, logger);
+                HandleN2kPGN128259(N2kMsg, boatData, logger, registry);
                 break;
             case 130316L:
-                HandleN2kPGN130316(N2kMsg, boatData, logger);
+                HandleN2kPGN130316(N2kMsg, boatData, logger, registry);
                 break;
 
             // Engine handlers (2 PGNs)
             case 127488L:
-                HandleN2kPGN127488(N2kMsg, boatData, logger);
+                HandleN2kPGN127488(N2kMsg, boatData, logger, registry);
                 break;
             case 127489L:
-                HandleN2kPGN127489(N2kMsg, boatData, logger);
+                HandleN2kPGN127489(N2kMsg, boatData, logger, registry);
                 break;
 
             // Wind handlers (1 PGN)
             case 130306L:
-                HandleN2kPGN130306(N2kMsg, boatData, logger);
+                HandleN2kPGN130306(N2kMsg, boatData, logger, registry);
                 break;
 
             default:
@@ -946,7 +975,7 @@ public:
 // Global handler instance (will be initialized in RegisterN2kHandlers)
 static N2kBoatDataHandler* globalHandler = nullptr;
 
-void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogger* logger) {
+void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry) {
     if (nmea2000 == nullptr || boatData == nullptr || logger == nullptr) {
         return;
     }
@@ -983,7 +1012,7 @@ void RegisterN2kHandlers(tNMEA2000* nmea2000, BoatData* boatData, WebSocketLogge
     nmea2000->ExtendReceiveMessages(ReceiveMessages);
 
     // Create and attach handler
-    globalHandler = new N2kBoatDataHandler(boatData, logger);
+    globalHandler = new N2kBoatDataHandler(boatData, logger, registry);
     nmea2000->AttachMsgHandler(globalHandler);
 
     logger->broadcastLog(LogLevel::INFO, "NMEA2000", "HANDLERS_REGISTERED",

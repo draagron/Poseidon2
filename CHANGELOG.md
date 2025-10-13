@@ -8,6 +8,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Source Statistics Tracking and WebUI (Feature 012) - 🚧 IN PROGRESS
+
+**Summary**: Real-time tracking and visualization of NMEA 2000/0183 message sources for diagnostic and monitoring purposes. Automatically discovers NMEA devices, tracks update frequencies, detects staleness, and streams statistics via WebSocket for dashboard display.
+
+**Feature Highlights**:
+- **Source Discovery**: Automatic detection of NMEA sources by SID (NMEA2000) or talker ID (NMEA0183)
+- **Frequency Tracking**: 10-sample rolling average for Hz calculation (±10% accuracy)
+- **Staleness Monitoring**: 5-second threshold with automatic status updates
+- **Garbage Collection**: Auto-removal of sources inactive >5 minutes
+- **WebSocket Streaming**: Full snapshot + incremental delta updates (500ms batching)
+- **Memory Efficient**: ~5.3KB static allocation for 50 sources, no heap fragmentation
+
+**Implementation Progress**:
+
+**Phase 1: Setup (100% Complete)** ✅
+- Data structures: `SourceStatistics.h` with CategoryType enum, MessageSource, MessageTypeEntry, CategoryEntry
+- Configuration: MAX_SOURCES=50, thresholds in `config.h` and `platformio.ini`
+- Build system: Verified ArduinoJson v6.x dependency
+
+**Phase 2: Foundational (100% Complete)** ✅
+- FrequencyCalculator: 10-sample rolling average frequency calculation
+- SourceRegistry: Core source tracking with discovery, eviction, GC
+- Unit tests: FrequencyCalculator validated with 10Hz/1Hz accuracy
+- Contract tests: SourceRegistry invariants verified
+
+**Phase 3: User Story 1 - Real-time Source Discovery (85% Complete)** 🚧
+- ✅ SourceStatsSerializer: JSON serialization (full snapshot, delta, removal)
+- ✅ SourceStatsHandler: WebSocket endpoint `/source-stats` with event handling
+- ✅ NMEA2000Handlers: Updated function signatures, pattern established (3/13 handlers with recordUpdate())
+- ✅ main.cpp integration: SourceRegistry init, WebSocket endpoint, ReactESP timers
+- ⏳ Remaining: Complete 10 NMEA2000 handler updates, NMEA0183 integration (T016)
+- ⏳ Testing: Unit tests (T013), integration tests (T019-T020)
+- **FrequencyCalculator utility**: Stateless frequency calculation from circular timestamp buffers
+  - calculate(): Computes Hz from 10-sample rolling average (O(1) time complexity)
+  - addTimestamp(): Circular buffer management with wrap-around
+  - **Tests**: 10/10 unit tests PASSED (10Hz, 1Hz, edge cases, buffer wrapping, rollover handling)
+
+- **SourceRegistry class**: Central authority for source lifecycle management
+  - init(): Pre-populate 19 message type mappings across 9 categories
+  - recordUpdate(): Source discovery, timestamp tracking, frequency calculation, 50-source limit enforcement
+  - updateStaleFlags(): O(n) iteration to update timeSinceLast and isStale flags
+  - garbageCollect(): Remove sources stale >5 minutes
+  - evictOldestSource(): Oldest-first eviction when source limit reached
+  - **Memory footprint**: ~5.3KB for 50 sources (validated)
+  - **Build status**: ✅ Compilation successful
+
+**Phase 3: User Story 1 - WebSocket Streaming (Partial - 40% Complete)** 🚧
+- **SourceStatsSerializer**: JSON serialization for WebSocket transmission
+  - toFullSnapshotJSON(): Complete registry snapshot (~4.5KB for 30 sources)
+  - toDeltaJSON(): Changed sources only (~600 bytes typical)
+  - toRemovalJSON(): Garbage collection events (~100 bytes)
+  - Static buffers (4096/2048 bytes) for memory efficiency
+
+- **Pending**: SourceStatsHandler, NMEA integration, main.cpp wiring, integration tests
+
+**Phase 4-6: Remaining** ⏳
+- WebUI Dashboard (`data/sources.html`)
+- Node.js proxy integration
+- Comprehensive testing and QA review
+
+**Technical Details**:
+- **Protocols**: NMEA 2000 (13 PGNs), NMEA 0183 (5 sentences)
+- **Categories**: GPS, Compass, Wind, DST, Rudder, Engine, Saildrive, Battery, ShorePower
+- **Architecture**: Hierarchical (Category → Message Type → Source), static allocation only
+- **Performance**: <50ms JSON serialization, 500ms ±50ms delta update interval
+
+**Files Created**:
+```
+src/components/SourceStatistics.h          [NEW] Data structures
+src/components/SourceRegistry.h/cpp        [NEW] Registry implementation
+src/components/SourceStatsSerializer.h/cpp [NEW] JSON serialization
+src/utils/FrequencyCalculator.h/cpp        [NEW] Frequency calculation utility
+test/test_source_stats_units/               [NEW] Unit test suite
+```
+
+**Files Modified**:
+```
+src/config.h                    [MODIFIED] Source stats constants
+platformio.ini                  [MODIFIED] Build flags
+specs/012-sources-stats-and/tasks.md  [MODIFIED] Task tracking
+```
+
+**References**:
+- Specification: `specs/012-sources-stats-and/spec.md`
+- Implementation Plan: `specs/012-sources-stats-and/plan.md`
+- Data Model: `specs/012-sources-stats-and/data-model.md`
+- Contracts: `specs/012-sources-stats-and/contracts/`
+
+---
+
 ### Added - Simple WebUI for BoatData Streaming (Feature 011) - ✅ COMPLETE
 
 **Summary**: Real-time web dashboard for boat sensor data visualization via WebSocket streaming. Serves an HTML dashboard from LittleFS storage with automatic WebSocket connection, JSON data streaming at 1 Hz, and organized display of all 9 sensor groups (GPS, Compass, Wind, DST, Rudder, Engine, Saildrive, Battery, Shore Power).
