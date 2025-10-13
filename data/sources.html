@@ -485,7 +485,9 @@
                         // Iterate through sources in this message type
                         if (Array.isArray(sourcesArray)) {
                             sourcesArray.forEach(source => {
-                                const key = `${source.sourceId}`;
+                                // Create unique key combining sourceId and messageTypeId
+                                // This prevents sources with same ID but different message types from overwriting each other
+                                const key = `${source.sourceId}-${messageTypeId}`;
                                 sources[key] = {
                                     ...source,
                                     category: categoryName,
@@ -506,15 +508,22 @@
 
             if (message.changes && Array.isArray(message.changes)) {
                 message.changes.forEach(change => {
-                    const key = `${change.sourceId}`;
-                    if (sources[key]) {
-                        // Update existing source
-                        if (change.frequency !== undefined) sources[key].frequency = change.frequency;
-                        if (change.timeSinceLast !== undefined) sources[key].timeSinceLast = change.timeSinceLast;
-                        if (change.isStale !== undefined) sources[key].isStale = change.isStale;
+                    // Since delta updates only include sourceId (not messageTypeId),
+                    // we need to update all sources that match this sourceId
+                    let updated = false;
+                    Object.keys(sources).forEach(key => {
+                        if (sources[key].sourceId === change.sourceId) {
+                            // Update existing source
+                            if (change.frequency !== undefined) sources[key].frequency = change.frequency;
+                            if (change.timeSinceLast !== undefined) sources[key].timeSinceLast = change.timeSinceLast;
+                            if (change.isStale !== undefined) sources[key].isStale = change.isStale;
 
-                        updateSourceRow(sources[key]);
-                    } else {
+                            updateSourceRow(sources[key]);
+                            updated = true;
+                        }
+                    });
+
+                    if (!updated) {
                         // New source discovered in delta (shouldn't happen but handle it)
                         console.warn('New source discovered in delta update:', change.sourceId);
                         // We need category and messageTypeId to render properly
@@ -529,9 +538,16 @@
         // Handle source removed message
         function handleSourceRemoved(message) {
             console.log('Source removed:', message);
-            const key = `${message.sourceId}`;
-            if (sources[key]) {
-                delete sources[key];
+            // Remove all sources with matching sourceId (may be multiple with different message types)
+            let removed = false;
+            Object.keys(sources).forEach(key => {
+                if (sources[key].sourceId === message.sourceId) {
+                    delete sources[key];
+                    removed = true;
+                }
+            });
+
+            if (removed) {
                 renderAllSources();
             }
         }
@@ -605,9 +621,11 @@
                 const stalenessText = source.isStale ? 'Stale' : 'Active';
                 const frequencyDisplay = source.frequency > 0 ? `${source.frequency.toFixed(2)} Hz` : '—';
                 const timeSinceDisplay = `${(source.timeSinceLast / 1000).toFixed(1)}s`;
+                // Create unique row identifier combining sourceId and messageTypeId
+                const uniqueId = `${source.sourceId}-${source.messageTypeId}`;
 
                 return `
-                    <tr data-source-id="${source.sourceId}">
+                    <tr data-source-key="${uniqueId}">
                         <td data-label="Source ID" class="source-id">${source.sourceId}</td>
                         <td data-label="Message Type" class="message-type">${source.messageTypeId}</td>
                         <td data-label="Protocol">
@@ -628,7 +646,9 @@
 
         // Update a single source row
         function updateSourceRow(source) {
-            const row = document.querySelector(`tr[data-source-id="${source.sourceId}"]`);
+            // Create unique row identifier combining sourceId and messageTypeId
+            const uniqueId = `${source.sourceId}-${source.messageTypeId}`;
+            const row = document.querySelector(`tr[data-source-key="${uniqueId}"]`);
             if (!row) return;
 
             const stalenessClass = source.isStale ? 'stale' : 'fresh';
