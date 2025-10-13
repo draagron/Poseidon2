@@ -335,6 +335,34 @@ bool SourceRegistry::removeSource(const char* sourceId) {
     return false;  // Source not found
 }
 
+bool SourceRegistry::updateDeviceInfo(const char* sourceId, const DeviceInfo& info) {
+    // Find the source
+    MessageSource* source = findSourceMutable(sourceId);
+    if (source == nullptr) {
+        return false;  // Source not found
+    }
+
+    // Update device info
+    source->deviceInfo = info;
+    hasChanges_ = true;
+
+    // Log device metadata update
+    if (logger_ != nullptr) {
+        String data = String(F("{\"sourceId\":\"")) + sourceId +
+                     F("\",\"hasInfo\":") + (info.hasInfo ? F("true") : F("false"));
+        if (info.hasInfo) {
+            data += String(F(",\"manufacturer\":\"")) + info.manufacturer +
+                   F("\",\"modelId\":\"") + info.modelId +
+                   F("\",\"serialNumber\":") + info.serialNumber + F("}");
+        } else {
+            data += F("}");
+        }
+        logger_->broadcastLog(LogLevel::DEBUG, "SourceRegistry", "DEVICE_INFO_UPDATED", data);
+    }
+
+    return true;
+}
+
 const CategoryEntry* SourceRegistry::getCategory(CategoryType category) const {
     if (category >= CategoryType::COUNT) {
         return nullptr;

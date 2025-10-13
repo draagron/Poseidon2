@@ -6,6 +6,59 @@
  */
 
 #include "SourceStatsSerializer.h"
+#include "utils/TalkerIdLookup.h"
+
+// Schema version (incremented for device metadata support)
+#define SOURCE_STATS_SCHEMA_VERSION 2
+
+/**
+ * @brief Add device info to JSON object
+ *
+ * Serializes DeviceInfo struct to JSON, handling both NMEA2000 (full metadata)
+ * and NMEA0183 (talker ID description only) sources.
+ *
+ * @param deviceInfoObj JSON object to populate
+ * @param source MessageSource with device info
+ */
+static void addDeviceInfoToJSON(JsonObject& deviceInfoObj, const MessageSource& source) {
+    if (source.protocol == ProtocolType::NMEA2000) {
+        // NMEA2000 source - full device metadata
+        if (source.deviceInfo.hasInfo) {
+            deviceInfoObj["hasInfo"] = true;
+            deviceInfoObj["manufacturerCode"] = source.deviceInfo.manufacturerCode;
+            deviceInfoObj["manufacturer"] = source.deviceInfo.manufacturer;
+            deviceInfoObj["modelId"] = source.deviceInfo.modelId;
+            deviceInfoObj["productCode"] = source.deviceInfo.productCode;
+            deviceInfoObj["serialNumber"] = source.deviceInfo.serialNumber;
+            deviceInfoObj["softwareVersion"] = source.deviceInfo.softwareVersion;
+            deviceInfoObj["deviceInstance"] = source.deviceInfo.deviceInstance;
+            deviceInfoObj["deviceClass"] = source.deviceInfo.deviceClass;
+            deviceInfoObj["deviceFunction"] = source.deviceInfo.deviceFunction;
+            deviceInfoObj["status"] = "Discovered";
+        } else {
+            deviceInfoObj["hasInfo"] = false;
+            // Check if discovery timeout occurred
+            if (source.deviceInfo.firstSeenTime == 0 ||
+                source.deviceInfo.isDiscoveryTimedOut(millis())) {
+                deviceInfoObj["status"] = "Unknown (timeout)";
+            } else {
+                deviceInfoObj["status"] = "Discovering...";
+            }
+        }
+    } else if (source.protocol == ProtocolType::NMEA0183) {
+        // NMEA0183 source - talker ID description only
+        deviceInfoObj["hasInfo"] = false;
+        deviceInfoObj["status"] = "N/A (NMEA0183)";
+
+        // Add talker ID description if available
+        if (source.talkerId[0] != '\0') {
+            const char* description = getTalkerDescription(source.talkerId);
+            if (description != nullptr) {
+                deviceInfoObj["description"] = description;
+            }
+        }
+    }
+}
 
 String SourceStatsSerializer::toFullSnapshotJSON(const SourceRegistry* registry) {
     if (registry == nullptr) {
@@ -16,7 +69,7 @@ String SourceStatsSerializer::toFullSnapshotJSON(const SourceRegistry* registry)
 
     // Message envelope
     doc["type"] = "fullSnapshot";
-    doc["version"] = 1;
+    doc["version"] = SOURCE_STATS_SCHEMA_VERSION;
     doc["timestamp"] = millis();
 
     // Create sources object (hierarchical: category -> message type -> sources array)
@@ -58,6 +111,10 @@ String SourceStatsSerializer::toFullSnapshotJSON(const SourceRegistry* registry)
                 srcObj["frequency"] = round(source.frequency * 10.0) / 10.0;  // 1 decimal place
                 srcObj["timeSinceLast"] = source.timeSinceLast;
                 srcObj["isStale"] = source.isStale;
+
+                // Add device metadata (schema v2)
+                JsonObject deviceInfo = srcObj.createNestedObject("deviceInfo");
+                addDeviceInfoToJSON(deviceInfo, source);
             }
         }
     }
@@ -108,6 +165,17 @@ String SourceStatsSerializer::toDeltaJSON(const SourceRegistry* registry) {
                 change["frequency"] = round(source.frequency * 10.0) / 10.0;
                 change["timeSinceLast"] = source.timeSinceLast;
                 change["isStale"] = source.isStale;
+
+                // Add device metadata (schema v2)
+                // Include deviceInfo in delta updates when device has been discovered
+                if (source.protocol == ProtocolType::NMEA2000 && source.deviceInfo.hasInfo) {
+                    JsonObject deviceInfo = change.createNestedObject("deviceInfo");
+                    addDeviceInfoToJSON(deviceInfo, source);
+                } else if (source.protocol == ProtocolType::NMEA0183 && source.talkerId[0] != '\0') {
+                    // Include talker description for NMEA0183 sources
+                    JsonObject deviceInfo = change.createNestedObject("deviceInfo");
+                    addDeviceInfoToJSON(deviceInfo, source);
+                }
             }
         }
     }

@@ -31,21 +31,21 @@
 
 ### Foundational Data Structures
 
-- [ ] **T004** [FOUNDATION] Extend `MessageSource` struct in `src/types/SourceStatistics.h` with `DeviceInfo` nested struct
+- [X] **T004** [FOUNDATION] Extend `MessageSource` struct in `src/types/SourceStatistics.h` with `DeviceInfo` nested struct
   - Add `DeviceInfo` struct definition (~72 bytes)
   - Add `deviceInfo` field to `MessageSource` struct
   - Update `MessageSource::init()` to call `deviceInfo.init()`
-  - **Files**: `src/types/SourceStatistics.h`
+  - **Files**: `src/components/SourceStatistics.h`
 
 ### Foundational Utilities (Can run in parallel after T004)
 
-- [ ] **T005** [P] [FOUNDATION] Implement `ManufacturerLookup` utility in `src/utils/ManufacturerLookup.h` and `.cpp`
+- [X] **T005** [P] [FOUNDATION] Implement `ManufacturerLookup` utility in `src/utils/ManufacturerLookup.h` and `.cpp`
   - Create static PROGMEM lookup table with ≥40 manufacturer codes (Garmin=275, Furuno=1855, Raymarine=378, etc.)
   - Implement `getManufacturerName(uint16_t code)` function
   - Return "Unknown (code)" for unrecognized codes
   - **Files**: `src/utils/ManufacturerLookup.h`, `src/utils/ManufacturerLookup.cpp`
 
-- [ ] **T006** [P] [FOUNDATION] Implement `TalkerIdLookup` utility in `src/utils/TalkerIdLookup.h` and `.cpp`
+- [X] **T006** [P] [FOUNDATION] Implement `TalkerIdLookup` utility in `src/utils/TalkerIdLookup.h` and `.cpp`
   - Create static PROGMEM lookup table with ≥15 talker IDs (AP=Autopilot, GP=GPS, VH=VHF Radio, etc.)
   - Implement `getTalkerDescription(const char* talkerId)` function
   - Return "Unknown NMEA0183 Device" for unrecognized IDs
@@ -53,7 +53,7 @@
 
 ### Foundational SourceRegistry Extensions
 
-- [ ] **T007** [FOUNDATION] Extend `SourceRegistry` with device metadata update method
+- [X] **T007** [FOUNDATION] Extend `SourceRegistry` with device metadata update method
   - Add `updateDeviceInfo(const char* sourceId, const DeviceInfo& info)` method to `SourceRegistry` class
   - Set `hasChanges_ = true` when device info updated
   - **Files**: `src/components/SourceRegistry.h`, `src/components/SourceRegistry.cpp`
@@ -98,7 +98,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] **T011** [US1] Create `DeviceInfoCollector` component in `src/components/DeviceInfoCollector.h` and `.cpp`
+- [X] **T011** [US1] Create `DeviceInfoCollector` component in `src/components/DeviceInfoCollector.h` and `.cpp`
   - Constructor: `DeviceInfoCollector(tN2kDeviceList*, SourceRegistry*, WebSocketLogger*)`
   - Method: `void init(ReactESP& app)` - setup 5-second ReactESP timer
   - Method: `uint8_t pollDeviceList()` - check `ReadResetIsListUpdated()`, extract metadata
@@ -109,7 +109,7 @@
   - **Files**: `src/components/DeviceInfoCollector.h`, `src/components/DeviceInfoCollector.cpp`
   - **Dependencies**: T004 (DeviceInfo struct), T005 (ManufacturerLookup), T007 (SourceRegistry::updateDeviceInfo)
 
-- [ ] **T012** [US1] Initialize `tN2kDeviceList` and `DeviceInfoCollector` in `main.cpp`
+- [X] **T012** [US1] Initialize `tN2kDeviceList` and `DeviceInfoCollector` in `main.cpp`
   - Create global `tN2kDeviceList* deviceList = nullptr;`
   - Create global `DeviceInfoCollector* deviceCollector = nullptr;`
   - In `setup()`: Initialize `deviceList = new tN2kDeviceList(nmea2000);` after NMEA2000 configuration
@@ -118,7 +118,7 @@
   - **Files**: `src/main.cpp`
   - **Dependencies**: T011 (DeviceInfoCollector implementation)
 
-- [ ] **T013** [US1] Add WebSocket logging for device discovery events
+- [X] **T013** [US1] Add WebSocket logging for device discovery events
   - Ensure `DeviceInfoCollector` logs at DEBUG level
   - Format: `{"sourceId":"NMEA2000-42","manufacturerCode":275,"manufacturer":"Garmin","modelId":"GPS 17x",...}`
   - Events: `DEVICE_DISCOVERED`, `DEVICE_UPDATED`, `DEVICE_TIMEOUT`
@@ -153,7 +153,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] **T016** [US2] Update `SourceStatsSerializer` to include device metadata (schema v2)
+- [X] **T016** [US2] Update `SourceStatsSerializer` to include device metadata (schema v2)
   - Increment `SOURCE_STATS_SCHEMA_VERSION` from 1 to 2
   - Extend `serializeFullSnapshot()` to include `deviceInfo` object for each source
   - Extend `serializeDelta()` to include `deviceInfo` when device discovered/updated/timed out
@@ -163,7 +163,7 @@
   - **Files**: `src/components/SourceStatsSerializer.h`, `src/components/SourceStatsSerializer.cpp`
   - **Dependencies**: T004 (DeviceInfo struct), T006 (TalkerIdLookup)
 
-- [ ] **T017** [US2] Update `SourceStatsHandler` to send delta updates on device discovery
+- [X] **T017** [US2] Update `SourceStatsHandler` to send delta updates on device discovery
   - Ensure `hasChanges` flag set when device metadata updated
   - Send delta update when `DeviceInfoCollector` calls `SourceRegistry::updateDeviceInfo()`
   - Send delta update when discovery timeout occurs (60 seconds)
@@ -182,7 +182,7 @@
 
 ### Implementation for User Story 3 (UI changes, no contract tests needed)
 
-- [ ] **T018** [US3] Update `data/sources.html` to display device metadata in expandable sections
+- [X] **T018** [US3] Update `data/sources.html` to display device metadata in expandable sections
   - Add expandable/collapsible UI for device details (JavaScript click handler)
   - Display fields: Manufacturer (with code), Model, Serial Number, Software Version
   - Display placeholder text:
@@ -193,7 +193,7 @@
   - **Files**: `data/sources.html`
   - **Dependencies**: T016 (WebSocket schema v2 with deviceInfo)
 
-- [ ] **T019** [US3] Add CSS styling for device metadata display
+- [X] **T019** [US3] Add CSS styling for device metadata display
   - Expandable section styling (collapsed/expanded states)
   - Mobile responsive layout (<= 768px breakpoint)
   - Icon for expand/collapse indicator

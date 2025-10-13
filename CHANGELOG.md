@@ -8,6 +8,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - NMEA2000 Device Discovery (Feature 013) - ✅ User Story 1 COMPLETE
+
+**Summary**: Automatic discovery and identification of NMEA2000 devices on the CAN bus, extracting manufacturer, model, serial number, and software version metadata. Enriches message sources with device information and exposes via WebSocket API.
+
+**Feature Highlights**:
+- **Automatic Discovery**: Polls `tN2kDeviceList` every 5 seconds for device announcements
+- **Metadata Extraction**: Manufacturer (with lookup table), model ID, serial number, software version
+- **Device Classification**: NMEA2000 device class, function, and instance numbers
+- **WebSocket Logging**: Real-time discovery events (`DEVICE_DISCOVERED`, `DEVICE_UPDATED`, `DEVICE_TIMEOUT`)
+- **Source Enrichment**: Integrates with SourceRegistry to add device metadata to MessageSource entries
+- **Memory Efficient**: ~72 bytes per DeviceInfo struct, <5KB total overhead
+
+**Implementation Status: User Stories 1-3 Complete** ✅✅✅
+
+**Completed Tasks - User Story 1 (Backend Discovery)**:
+- ✅ T004: Extended `MessageSource` with nested `DeviceInfo` struct in `SourceStatistics.h`
+- ✅ T005: Implemented `ManufacturerLookup` utility with PROGMEM table (40+ manufacturers)
+- ✅ T006: Implemented `TalkerIdLookup` utility for NMEA0183 talker ID descriptions
+- ✅ T007: Extended `SourceRegistry` with `updateDeviceInfo()` method
+- ✅ T011: Created `DeviceInfoCollector` component with 5-second polling cycle
+- ✅ T012: Initialized `tN2kDeviceList` and `DeviceInfoCollector` in `main.cpp`
+- ✅ T013: Added WebSocket logging for all device discovery events
+
+**Completed Tasks - User Story 2 (WebSocket API)**:
+- ✅ T016: Updated `SourceStatsSerializer` to include device metadata (schema v2)
+  - Incremented schema version from 1 to 2
+  - Added deviceInfo to full snapshot and delta updates
+  - Support for both NMEA2000 (full metadata) and NMEA0183 (talker descriptions)
+- ✅ T017: Verified delta updates trigger automatically on device discovery
+  - `updateDeviceInfo()` sets `hasChanges = true`
+  - 500ms timer sends delta updates automatically
+
+**Completed Tasks - User Story 3 (WebUI Dashboard)**:
+- ✅ T018: Updated `data/sources.html` with device metadata display
+  - Added "Device Info" column to sources table
+  - Display manufacturer, model, serial number, software version for NMEA2000
+  - Display talker ID descriptions for NMEA0183
+  - Show status: "Discovering...", "Discovered", "Unknown (timeout)"
+- ✅ T019: Added CSS styling for device info display
+  - Device info container with primary/secondary text
+  - Status-based color coding (discovering=orange, timeout=red, discovered=blue)
+  - Responsive layout for mobile devices
+
+**Files Modified**:
+- `src/components/SourceStatistics.h`: Added `DeviceInfo` struct (72 bytes)
+- `src/components/SourceRegistry.h/.cpp`: Added `updateDeviceInfo()` method
+- `src/components/DeviceInfoCollector.h/.cpp`: New component for device discovery
+- `src/components/SourceStatsSerializer.cpp`: Schema v2 with deviceInfo serialization
+- `src/utils/ManufacturerLookup.h/.cpp`: NMEA2000 manufacturer code lookup (platform-agnostic)
+- `src/utils/TalkerIdLookup.h/.cpp`: NMEA0183 talker ID descriptions
+- `src/main.cpp`: Device discovery initialization (lines 688-699)
+- `data/sources.html`: Device metadata display in WebUI
+
+**Next Steps**:
+- User Story 4 (P4): NMEA0183 talker ID integration (T020-T023) - Optional enhancement
+
 ### Added - Source Statistics Tracking and WebUI (Feature 012) - 🚧 IN PROGRESS
 
 **Summary**: Real-time tracking and visualization of NMEA 2000/0183 message sources for diagnostic and monitoring purposes. Automatically discovers NMEA devices, tracks update frequencies, detects staleness, and streams statistics via WebSocket for dashboard display.

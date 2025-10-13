@@ -45,6 +45,7 @@
 #include "components/SourceRegistry.h"
 #include "components/SourceStatsHandler.h"
 #include "components/SourceStatsSerializer.h"
+#include "components/DeviceInfoCollector.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -103,6 +104,10 @@ NMEA0183Handler* nmea0183Handler = nullptr;
 
 // NMEA2000 components (T027)
 tNMEA2000* nmea2000 = nullptr;
+
+// Device discovery components (Feature 013-r013-nmea2000-device)
+tN2kDeviceList* deviceList = nullptr;
+DeviceInfoCollector* deviceCollector = nullptr;
 
 // WebUI components (Feature 011-simple-webui-as)
 AsyncWebSocket wsBoatData("/boatdata");
@@ -678,6 +683,19 @@ void setup() {
     if (nmea2000 != nullptr) {
         RegisterN2kHandlers(nmea2000, boatData, &logger, &sourceRegistry);
         Serial.println(F("NMEA2000 handlers registered - processing 13 PGNs"));
+    }
+
+    // Feature 013: Initialize NMEA2000 device discovery (after NMEA2000 Open and handlers)
+    Serial.println(F("Initializing NMEA2000 device discovery..."));
+    if (nmea2000 != nullptr) {
+        deviceList = new tN2kDeviceList(nmea2000);
+        deviceCollector = new DeviceInfoCollector(deviceList, &sourceRegistry, &logger);
+        deviceCollector->init(app);  // Register 5-second ReactESP timer
+        logger.broadcastLog(LogLevel::INFO, "DeviceDiscovery", "INITIALIZED",
+                            F("{\"pollInterval\":5000,\"timeout\":60000}"));
+        Serial.println(F("Device discovery initialized - polling every 5 seconds"));
+    } else {
+        Serial.println(F("WARNING: Device discovery skipped (NMEA2000 not initialized)"));
     }
 
     // T030: Register NMEA2000 sources with BoatData prioritizer

@@ -260,6 +260,52 @@
             color: #f44336;
         }
 
+        /* Device Info Styling */
+        .device-info-cell {
+            font-size: 0.9rem;
+            max-width: 250px;
+        }
+
+        .device-info-container {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .device-primary {
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .device-primary strong {
+            color: #4fc3f7;
+        }
+
+        .device-secondary {
+            color: #9e9e9e;
+            font-size: 0.8rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .device-description {
+            color: #9e9e9e;
+            font-style: italic;
+        }
+
+        .device-discovering {
+            color: #ff9800;
+            font-size: 0.85rem;
+        }
+
+        .device-timeout {
+            color: #f44336;
+            font-size: 0.85rem;
+        }
+
+        .device-unknown {
+            color: #616161;
+        }
+
         .empty-state {
             padding: 60px 20px;
             text-align: center;
@@ -393,10 +439,9 @@
     </div>
 
     <script>
-        // Configuration - Connect to proxy server instead of ESP32 directly
-        const PROXY_HOST = window.location.hostname;
-        const PROXY_PORT = window.location.port || '3030';
-        const WS_ENDPOINT = `ws://${PROXY_HOST}:${PROXY_PORT}/source-stats`;
+        // Configuration
+        const ESP32_IP = window.location.hostname;
+        const WS_ENDPOINT = `ws://${ESP32_IP}/source-stats`;
 
         // Global state
         let ws = null;
@@ -518,6 +563,7 @@
                             if (change.frequency !== undefined) sources[key].frequency = change.frequency;
                             if (change.timeSinceLast !== undefined) sources[key].timeSinceLast = change.timeSinceLast;
                             if (change.isStale !== undefined) sources[key].isStale = change.isStale;
+                            if (change.deviceInfo !== undefined) sources[key].deviceInfo = change.deviceInfo;
 
                             updateSourceRow(sources[key]);
                             updated = true;
@@ -596,6 +642,7 @@
                                         <th>Source ID</th>
                                         <th>Message Type</th>
                                         <th>Protocol</th>
+                                        <th>Device Info</th>
                                         <th>Frequency</th>
                                         <th>Time Since Last</th>
                                         <th>Status</th>
@@ -612,6 +659,42 @@
 
             container.innerHTML = html;
             updateSummary();
+        }
+
+        // Format device info for display
+        function formatDeviceInfo(source) {
+            if (!source.deviceInfo) {
+                return '<span class="device-unknown">—</span>';
+            }
+
+            const info = source.deviceInfo;
+
+            // NMEA2000 source with full device info
+            if (info.hasInfo) {
+                return `
+                    <div class="device-info-container">
+                        <div class="device-primary">
+                            <strong>${info.manufacturer}</strong> ${info.modelId}
+                        </div>
+                        <div class="device-secondary">
+                            SN: ${info.serialNumber} | SW: ${info.softwareVersion}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // NMEA0183 source with talker description
+            if (info.description) {
+                return `<span class="device-description">${info.description}</span>`;
+            }
+
+            // Status messages (Discovering, Timeout, etc.)
+            if (info.status) {
+                const statusClass = info.status.includes('timeout') ? 'device-timeout' : 'device-discovering';
+                return `<span class="${statusClass}">${info.status}</span>`;
+            }
+
+            return '<span class="device-unknown">—</span>';
         }
 
         // Render sources for a specific category
@@ -632,6 +715,7 @@
                         <td data-label="Protocol">
                             <span class="protocol-badge ${protocolClass}">${source.protocol}</span>
                         </td>
+                        <td data-label="Device Info" class="device-info-cell">${formatDeviceInfo(source)}</td>
                         <td data-label="Frequency" class="frequency">${frequencyDisplay}</td>
                         <td data-label="Time Since Last" class="time-since">${timeSinceDisplay}</td>
                         <td data-label="Status">

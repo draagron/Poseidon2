@@ -95,6 +95,23 @@ public:
      */
     void garbageCollect();
 
+    // === Device Metadata ===
+
+    /**
+     * @brief Update device metadata for a source
+     *
+     * Sets the DeviceInfo struct for a source identified by sourceId.
+     * Used by DeviceInfoCollector to enrich source with NMEA2000 device metadata.
+     *
+     * @param sourceId Source identifier (e.g., "NMEA2000-42")
+     * @param info DeviceInfo struct with device metadata
+     * @return true if source found and updated, false if source not found
+     *
+     * @post source.deviceInfo = info (if source exists)
+     * @post hasChanges_ = true (to trigger WebSocket delta update)
+     */
+    bool updateDeviceInfo(const char* sourceId, const DeviceInfo& info);
+
     // === Statistics ===
 
     /**

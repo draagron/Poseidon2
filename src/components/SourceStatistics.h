@@ -52,12 +52,93 @@ enum class CategoryType : uint8_t {
 // =============================================================================
 
 /**
+ * @brief NMEA2000 device metadata
+ *
+ * Extracted from tN2kDeviceList during device discovery polling.
+ * Embedded within MessageSource struct for static allocation.
+ *
+ * Memory footprint: 72 bytes per source (with alignment padding)
+ * - 1 bool: 1 byte
+ * - 9 numeric fields: 2×uint16_t (4) + 3×uint32_t (12) + 3×uint8_t (3) = 19 bytes
+ * - 3 strings: 16+24+12 = 52 bytes
+ * - Raw total: 72 bytes (1 + 19 + 52 = 72 bytes exactly with padding)
+ */
+struct DeviceInfo {
+    // === Discovery Status ===
+    bool hasInfo;                    ///< true if device was discovered via tN2kDeviceList
+
+    // === NMEA2000 Identification ===
+    uint16_t manufacturerCode;       ///< NMEA2000 manufacturer code (e.g., 275=Garmin, 1855=Furuno)
+    char manufacturer[16];           ///< Human-readable manufacturer name (e.g., "Garmin", "Furuno")
+    char modelId[24];                ///< Model identifier string (e.g., "GPS 17x", "GP330B")
+    uint16_t productCode;            ///< Product code (manufacturer-specific)
+    uint32_t serialNumber;           ///< Unique device serial number
+    char softwareVersion[12];        ///< Firmware version (e.g., "v2.30", "1.05")
+
+    // === NMEA2000 Classification ===
+    uint8_t deviceInstance;          ///< Device instance (0-255, for multi-device setups)
+    uint8_t deviceClass;             ///< NMEA2000 device class (e.g., 25=Navigation, 30=Communication)
+    uint8_t deviceFunction;          ///< NMEA2000 device function (e.g., 130=GPS, 140=Compass)
+
+    // === Discovery Tracking ===
+    uint32_t firstSeenTime;          ///< millis() timestamp when source first detected
+    uint32_t discoveryTimeout;       ///< 60000ms (60 seconds) - time to wait before marking "Unknown"
+
+    // === NMEA0183 Description (alternative to full metadata) ===
+    char description[32];            ///< Device type description for NMEA0183 (e.g., "Autopilot")
+
+    /**
+     * @brief Initialize with default values (no device info)
+     */
+    void init() {
+        hasInfo = false;
+        manufacturerCode = 0;
+        manufacturer[0] = '\0';
+        modelId[0] = '\0';
+        productCode = 0;
+        serialNumber = 0;
+        softwareVersion[0] = '\0';
+        deviceInstance = 255;  // 255 = unknown/not specified
+        deviceClass = 255;
+        deviceFunction = 255;
+        firstSeenTime = 0;
+        discoveryTimeout = 60000;  // 60 seconds
+        description[0] = '\0';
+    }
+
+    /**
+     * @brief Check if discovery timeout has expired
+     * @param currentTime Current millis() timestamp
+     * @return true if timeout exceeded and device still not discovered
+     */
+    bool isDiscoveryTimedOut(uint32_t currentTime) const {
+        return !hasInfo && firstSeenTime > 0 &&
+               (currentTime - firstSeenTime) >= discoveryTimeout;
+    }
+
+    /**
+     * @brief Get discovery status string for logging/UI
+     * @param currentTime Current millis() timestamp
+     * @return "Discovered", "Discovering...", or "Unknown (timeout)"
+     */
+    const char* getStatusString(uint32_t currentTime) const {
+        if (hasInfo) {
+            return "Discovered";
+        } else if (isDiscoveryTimedOut(currentTime)) {
+            return "Unknown (timeout)";
+        } else {
+            return "Discovering...";
+        }
+    }
+};
+
+/**
  * @brief Individual message source (NMEA device)
  *
  * Represents a single source providing a specific message type.
  * Examples: "NMEA2000-42" (GPS with SID 42), "NMEA0183-AP" (Autopilot)
  *
- * Memory footprint: ~95 bytes per source
+ * Memory footprint: ~167 bytes per source (was ~95 bytes before device metadata)
  */
 struct MessageSource {
     // === Identification ===
@@ -81,6 +162,9 @@ struct MessageSource {
     // === Lifecycle ===
     bool active;                    ///< true if source is registered
 
+    // === Device Metadata ===
+    DeviceInfo deviceInfo;          ///< Device metadata (NMEA2000 only, hasInfo=false for NMEA0183)
+
     /**
      * @brief Initialize source with default values
      */
@@ -102,6 +186,9 @@ struct MessageSource {
         for (int i = 0; i < 10; i++) {
             timestampBuffer[i] = 0;
         }
+
+        // Initialize device info
+        deviceInfo.init();
     }
 };
 
