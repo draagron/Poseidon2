@@ -1018,3 +1018,469 @@ void HandleN2kPGN<NUMBER>(const tN2kMsg &N2kMsg, BoatData* boatData, WebSocketLo
 
 ---
 **NMEA 2000 Handler Version**: 1.0.0 | **Last Updated**: 2025-10-12
+
+## WebUI Integration (R009 - Simple WebUI for BoatData Streaming)
+
+### Overview
+The WebUI system provides real-time marine sensor data visualization through WebSocket streaming. The dashboard displays all 10 sensor groups with automatic updates at 1 Hz, including GPS, compass, wind, DST sensors, engine telemetry, battery monitoring, shore power, and calculated sailing performance.
+
+### Architecture
+
+**Component Stack**:
+1. **BoatDataSerializer**: JSON serialization of all BoatData structures
+2. **WebSocket Endpoint** (`/boatdata`): Broadcasts serialized data to connected clients
+3. **HTTP Endpoint** (`/stream`): Serves HTML dashboard from LittleFS
+4. **ReactESP Timer**: 1 Hz broadcast loop for real-time updates
+5. **Node.js Proxy** (optional): Multi-client relay server for development/monitoring
+
+### ESP32 Implementation
+
+#### BoatDataSerializer Component
+
+**Purpose**: Converts complete BoatData repository to JSON format for WebSocket streaming.
+
+**Files**:
+- `src/components/BoatDataSerializer.h` - Static serialization class with helper methods
+- `src/components/BoatDataSerializer.cpp` - Implementation of 10 sensor group serializers
+
+**Key Features**:
+- **Static allocation**: 2048-byte JSON buffer (no heap fragmentation)
+- **Performance**: <50ms serialization time @ 240 MHz ESP32
+- **Complete serialization**: All 10 sensor groups (GPS, Compass, Wind, DST, Rudder, Engine, Saildrive, Battery, ShorePower, Derived)
+- **Error handling**: Buffer overflow detection, null pointer checks
+- **Logging**: WebSocket-based performance and error reporting
+
+**API**:
+```cpp
+#include "components/BoatDataSerializer.h"
+
+// Serialize complete BoatData to JSON string
+String json = BoatDataSerializer::toJSON(boatData);
+if (json.length() > 0) {
+    wsBoatData.textAll(json);  // Broadcast to all WebSocket clients
+}
+```
+
+**JSON Output Format**:
+```json
+{
+  "timestamp": 1234567890,
+  "gps": {
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "cog": 1.571,
+    "sog": 5.5,
+    "variation": 0.262,
+    "available": true,
+    "lastUpdate": 1234567890
+  },
+  "compass": {
+    "trueHeading": 1.571,
+    "magneticHeading": 1.833,
+    "rateOfTurn": 0.05,
+    "heelAngle": 0.087,
+    "pitchAngle": 0.052,
+    "heave": 0.1,
+    "available": true,
+    "lastUpdate": 1234567890
+  },
+  "wind": { /* ... */ },
+  "dst": { /* ... */ },
+  "rudder": { /* ... */ },
+  "engine": { /* ... */ },
+  "saildrive": { /* ... */ },
+  "battery": { /* ... */ },
+  "shorePower": { /* ... */ },
+  "derived": {
+    "awaOffset": 0.785,
+    "awaHeel": 0.802,
+    "leeway": 0.087,
+    "stw": 5.3,
+    "tws": 12.5,
+    "twa": 0.524,
+    "wdir": 2.356,
+    "vmg": 4.5,
+    "soc": 0.5,
+    "doc": 3.14,
+    "available": true,
+    "lastUpdate": 1234567890
+  }
+}
+```
+
+#### WebSocket Endpoint Setup
+
+**Initialization** (in `main.cpp`):
+```cpp
+#include "components/BoatDataSerializer.h"
+
+// Global WebSocket instance
+AsyncWebSocket wsBoatData("/boatdata");
+
+void setupBoatDataWebSocket() {
+    // WebSocket event handlers
+    wsBoatData.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client,
+                          AwsEventType type, void* arg, uint8_t* data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            logger.broadcastLog(LogLevel::INFO, "WebSocket", "CLIENT_CONNECTED",
+                String(F("{\"client_id\":")) + client->id() + F("}"));
+        } else if (type == WS_EVT_DISCONNECT) {
+            logger.broadcastLog(LogLevel::INFO, "WebSocket", "CLIENT_DISCONNECTED",
+                String(F("{\"client_id\":")) + client->id() + F("}"));
+        }
+    });
+
+    // Add WebSocket handler to web server
+    server.addHandler(&wsBoatData);
+}
+
+// ReactESP broadcast timer (1 Hz)
+app.onRepeat(1000, []() {
+    if (wsBoatData.count() > 0 && boatData != nullptr) {
+        String json = BoatDataSerializer::toJSON(boatData);
+        if (json.length() > 0) {
+            wsBoatData.textAll(json);
+        }
+    }
+});
+```
+
+#### HTTP Dashboard Endpoint
+
+**Serves** `data/stream.html` from LittleFS:
+```cpp
+// In setupWebServer()
+server.on("/stream", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send(LittleFS, "/stream.html", "text/html");
+});
+```
+
+#### HTML Dashboard
+
+**File**: `data/stream.html` (served from LittleFS)
+
+**Features**:
+- **10 sensor cards**: GPS, Compass, Wind, DST, Rudder, Engine, Saildrive, Battery, Shore Power, Calculated Performance
+- **Real-time updates**: 1 Hz WebSocket streaming
+- **Availability indicators**: Color-coded cards (green = available, gray = unavailable)
+- **Unit conversions**: Radians→degrees, meters/second→knots, Kelvin→Celsius
+- **Responsive layout**: CSS Grid, mobile-friendly
+- **Connection status**: Real-time WebSocket connection indicator
+- **Error handling**: Automatic reconnection on disconnect
+
+**Access**:
+```
+http://<ESP32_IP>:3030/stream
+```
+
+**Example**: `http://192.168.10.3:3030/stream`
+
+### Node.js Proxy Server (Optional)
+
+**Purpose**: Relay ESP32 WebSocket data to multiple browser clients (development/monitoring).
+
+**Location**: `nodejs-boatdata-viewer/`
+
+**Why Use Proxy**:
+- **Multi-client support**: ESP32 WebSocket limited to ~8 concurrent connections
+- **Development workflow**: Monitor data while testing firmware
+- **Remote access**: Single ESP32 connection, multiple browser clients
+- **Network flexibility**: Access ESP32 on different network segment
+
+**Architecture**:
+```
+ESP32 (192.168.10.3:3030) ─── [WebSocket] ──> Node.js Proxy (localhost:3030)
+                                                     │
+                                                     ├─ [WebSocket] ──> Browser 1
+                                                     ├─ [WebSocket] ──> Browser 2
+                                                     └─ [WebSocket] ──> Browser N
+```
+
+**Setup**:
+```bash
+cd nodejs-boatdata-viewer
+
+# Install dependencies (first time only)
+npm install
+
+# Configure ESP32 IP address
+# Edit config.json: {"esp32_ip": "192.168.10.3", "esp32_port": 3030}
+
+# Start proxy server
+npm start
+
+# Access dashboard
+# Open browser: http://localhost:3030/stream
+```
+
+**Files**:
+- `server.js` (231 lines): WebSocket relay logic, HTTP server
+- `config.json`: ESP32 IP/port configuration
+- `public/stream.html`: Dashboard (identical to ESP32 version)
+- `package.json`: Node.js dependencies (ws, express)
+- `README.md`: Comprehensive proxy documentation
+
+**Features**:
+- **Auto-reconnect**: Handles ESP32 disconnections (firmware updates, reboots)
+- **Heartbeat monitoring**: Detects stale ESP32 connections
+- **Error handling**: Graceful degradation on network issues
+- **Logging**: Connection status, message counts, errors
+
+**Memory Footprint** (ESP32 Side):
+- **No impact**: Node.js proxy consumes no ESP32 resources
+- **Single WebSocket client**: ~200 bytes ESP32 RAM per connection
+- **Recommended**: Use proxy to minimize ESP32 WebSocket load
+
+### Dashboard Display
+
+#### 10 Sensor Cards
+
+**1. GPS Navigation**:
+- Latitude/Longitude (decimal degrees)
+- COG (Course Over Ground, degrees true)
+- SOG (Speed Over Ground, knots)
+- Variation (magnetic variation, degrees)
+
+**2. Compass & Attitude**:
+- True Heading (degrees true)
+- Magnetic Heading (degrees magnetic)
+- Rate of Turn (degrees/second)
+- Heel Angle (degrees, ±90°)
+- Pitch Angle (degrees, ±30°)
+- Heave (meters, vertical displacement)
+
+**3. Wind Data**:
+- Apparent Wind Angle (degrees, ±180°)
+- Apparent Wind Speed (knots)
+
+**4. DST (Depth/Speed/Temperature)**:
+- Depth (meters below waterline)
+- Boat Speed (knots, measured through water)
+- Sea Temperature (Celsius)
+
+**5. Rudder**:
+- Steering Angle (degrees, ±90°)
+
+**6. Engine**:
+- Engine RPM (revolutions per minute)
+- Oil Temperature (Celsius)
+- Alternator Voltage (volts)
+
+**7. Saildrive**:
+- Engagement Status (engaged/retracted)
+
+**8. Battery**:
+- **House Bank (A)**: Voltage, Amperage, SoC (%), Charger Status
+- **Starter Bank (B)**: Voltage, Amperage, SoC (%), Charger Status
+
+**9. Shore Power**:
+- Connection Status (connected/disconnected)
+- Power Draw (watts)
+
+**10. Calculated Performance**:
+- **Apparent Wind (Corrected)**: AWA Offset, AWA Heel
+- **True Wind**: TWS, TWA, Wind Direction
+- **Speed & Leeway**: STW, Leeway, VMG
+- **Current**: SOC, DOC
+
+#### Unit Conversions
+
+**JavaScript Utilities** (in stream.html):
+```javascript
+// Radians to degrees (0-360°)
+function radToDeg(rad) {
+    if (rad === null || rad === undefined) return null;
+    return ((rad * 180 / Math.PI) + 360) % 360;
+}
+
+// Radians to signed degrees (-180° to +180°)
+function radToSignedDeg(rad) {
+    if (rad === null || rad === undefined) return null;
+    let deg = rad * 180 / Math.PI;
+    return deg > 180 ? deg - 360 : deg;
+}
+```
+
+**Automatic Conversions**:
+- **Angles**: Radians → Degrees (all heading/wind/course data)
+- **Speeds**: Stored as knots (no conversion needed)
+- **Temperatures**: Stored as Celsius (no conversion needed)
+- **Timestamps**: Milliseconds since boot → Human-readable
+
+### Integration with CalculationEngine
+
+**Derived Data Pipeline**:
+1. **Every 200ms** (5 Hz): `calculateDerivedParameters()` calls `CalculationEngine`
+2. **CalculationEngine** updates `boatData->derived` structure with 11 calculated parameters
+3. **Every 1 second** (1 Hz): `BoatDataSerializer::toJSON()` includes derived data
+4. **WebSocket broadcast**: Dashboard receives and displays calculated performance metrics
+
+**CalculationEngine Call** (src/main.cpp:323):
+```cpp
+void calculateDerivedParameters() {
+    if (boatData == nullptr || calculationEngine == nullptr) {
+        return;  // Not yet initialized
+    }
+
+    // Measure calculation duration
+    unsigned long startMicros = micros();
+
+    // Execute calculation cycle
+    calculationEngine->calculate(boatData->getDataStructure());
+
+    // Calculate duration in milliseconds
+    unsigned long durationMicros = micros() - startMicros;
+    unsigned long durationMs = durationMicros / 1000;
+
+    // Check for overrun (>200ms)
+    if (durationMs > 200) {
+        logger.broadcastLog(LogLevel::WARN, "CalculationEngine", "OVERRUN",
+            String("{\"duration_ms\":") + durationMs + ",\"overrun_count\":" + (diag.calculationOverruns + 1) + "}");
+    }
+}
+```
+
+### Performance Constraints
+
+**Serialization**:
+- **Target**: <50ms per serialization (@ 240 MHz ESP32)
+- **Typical**: 10-20ms for complete 10-sensor-group JSON
+- **Buffer size**: 2048 bytes (sufficient for ~1800 bytes JSON + 27% margin)
+
+**WebSocket Broadcast**:
+- **Frequency**: 1 Hz (1-second interval)
+- **Payload size**: ~1500-1800 bytes JSON
+- **Client limit**: 8 concurrent WebSocket clients (ESPAsyncWebServer limit)
+- **Latency**: <100ms from sensor update to browser display
+
+**Memory Footprint**:
+- **BoatDataSerializer**: ~2KB static buffer (no heap allocation)
+- **WebSocket per client**: ~200 bytes RAM
+- **Total WebUI impact**: ~3KB RAM (0.9% of ESP32 RAM)
+- **Flash**: +15KB code (0.8% of 1.9MB partition)
+
+### Error Handling
+
+**Serialization Errors**:
+- **Null pointer**: Returns empty string, logs ERROR
+- **Buffer overflow**: Returns empty string, logs WARN with buffer size
+- **Performance exceeded**: Logs WARN if serialization >50ms
+
+**WebSocket Errors**:
+- **Client disconnect**: Logged as INFO, no system impact
+- **Send failure**: Silently dropped (ESPAsyncWebServer handles buffering)
+- **Connection refused**: Client-side retry logic (automatic reconnection)
+
+**Dashboard Resilience**:
+- **WebSocket disconnect**: Auto-reconnect with exponential backoff (1s, 2s, 4s, max 10s)
+- **Invalid JSON**: Error logged to browser console, display not updated
+- **Null/undefined values**: Displayed as "N/A" with gray styling
+- **Unavailable sensors**: Card grayed out, "Not Available" indicator
+
+### Troubleshooting
+
+**Dashboard Not Loading**:
+1. Verify LittleFS mounted: Check WebSocket logs for "FILESYSTEM_MOUNTED"
+2. Verify file uploaded: `pio run --target uploadfs` uploads data/stream.html
+3. Check HTTP endpoint: `curl http://<ESP32_IP>:3030/stream` should return HTML
+4. Browser console: Check for HTTP 404 or 500 errors
+
+**WebSocket Not Connecting**:
+1. Verify WebSocket endpoint: `ws://<ESP32_IP>:3030/boatdata`
+2. Check firewall: Allow HTTP/WebSocket on port 3030
+3. Browser console: Check WebSocket connection errors
+4. Monitor ESP32 logs: Watch for "CLIENT_CONNECTED" events
+
+**No Data Updates**:
+1. Verify BoatData initialized: Check `boatData != nullptr` in main.cpp
+2. Check ReactESP timer: Verify 1 Hz broadcast loop running (line 694)
+3. Monitor WebSocket logs: Look for "SERIALIZATION_SUCCESS" messages
+4. Browser console: Check if JSON messages received but not parsed
+
+**Derived Data Not Updating**:
+1. Verify CalculationEngine initialized: Check `calculationEngine != nullptr`
+2. Verify calculation loop: Check 200ms ReactESP timer running (line 650)
+3. Check sensor availability: Derived data requires GPS, Compass, Wind, DST available
+4. Monitor calculation logs: Watch for "CALCULATION_ENGINE" events or "OVERRUN" warnings
+
+**Node.js Proxy Issues**:
+1. **Cannot connect to ESP32**: Verify ESP32 IP/port in config.json
+2. **Proxy crashes**: Check Node.js version (v14+ required)
+3. **No data relayed**: Monitor proxy console for connection errors
+4. **High latency**: Check network between proxy and ESP32
+
+### Testing
+
+**WebUI Components**:
+```bash
+# BoatDataSerializer unit tests (validation, buffer overflow)
+pio test -e native -f test_serializer_units
+
+# WebSocket integration tests (broadcast timing, client handling)
+pio test -e native -f test_webui_integration
+
+# Hardware tests (ESP32 + browser client required)
+pio test -e esp32dev_test -f test_webui_hardware
+```
+
+**Manual Testing**:
+1. Upload firmware: `pio run --target upload`
+2. Upload dashboard: `pio run --target uploadfs`
+3. Access dashboard: `http://<ESP32_IP>:3030/stream`
+4. Verify all 10 sensor cards display
+5. Check 1 Hz update rate (observe timestamps)
+6. Disconnect/reconnect WebSocket (watch auto-reconnect)
+7. Monitor ESP32 WebSocket logs for errors
+
+**Node.js Proxy Testing**:
+1. Configure ESP32 IP in `nodejs-boatdata-viewer/config.json`
+2. Start proxy: `npm start`
+3. Access dashboard: `http://localhost:3030/stream`
+4. Open multiple browser tabs (test multi-client support)
+5. Reboot ESP32 (test auto-reconnect)
+6. Monitor proxy console for connection/relay events
+
+### WebSocket Log Monitoring
+
+Monitor WebUI events:
+```bash
+# Connect to WebSocket logs
+python3 src/helpers/ws_logger.py <ESP32_IP> --filter WebSocket
+
+# Filter for serialization events
+python3 src/helpers/ws_logger.py <ESP32_IP> --filter BoatDataSerializer
+```
+
+**Log Levels**:
+- **INFO**: WebSocket client connect/disconnect
+- **DEBUG**: Serialization success (size, duration)
+- **WARN**: Serialization performance exceeded (>50ms) or buffer overflow
+- **ERROR**: Null pointer or serialization failure
+
+**Example Log Output**:
+```json
+{"level":"INFO","component":"WebSocket","event":"CLIENT_CONNECTED","data":{"client_id":42}}
+{"level":"DEBUG","component":"BoatDataSerializer","event":"SERIALIZATION_SUCCESS","data":{"size_bytes":1650,"elapsed_us":15000}}
+{"level":"WARN","component":"BoatDataSerializer","event":"PERFORMANCE_EXCEEDED","data":{"elapsed_us":55000,"threshold_us":50000}}
+```
+
+### Constitutional Compliance
+
+- ✅ **Principle I** (HAL Abstraction): No hardware dependencies in serializer
+- ✅ **Principle II** (Resource Management): Static allocation only, 2KB buffer
+- ✅ **Principle III** (TDD): Serializer unit tests (validation, overflow)
+- ✅ **Principle IV** (Modularity): BoatDataSerializer separate component
+- ✅ **Principle V** (Network Debugging): WebSocket logging for all events
+- ✅ **Principle VI** (Always-On): Non-blocking ReactESP broadcast loop
+- ✅ **Principle VII** (Fail-Safe): Graceful degradation on serialization errors
+
+### References
+
+- **Specification**: `specs/011-simple-webui-as/spec.md`
+- **Implementation Plan**: `specs/011-simple-webui-as/plan.md`
+- **Task List**: `specs/011-simple-webui-as/tasks.md`
+- **Node.js Proxy README**: `nodejs-boatdata-viewer/README.md`
+- **Dashboard HTML**: `data/stream.html`, `nodejs-boatdata-viewer/public/stream.html`
+
+---
+**WebUI Version**: 1.0.0 | **Last Updated**: 2025-10-13

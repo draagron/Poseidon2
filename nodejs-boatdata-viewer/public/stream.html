@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poseidon2 BoatData Dashboard (Proxy)</title>
+    <style>
+        /* Marine theme color scheme */
+        :root {
+            --bg-dark: #0a1929;
+            --bg-card: #132f4c;
+            --bg-header: #1a3a52;
+            --text-light: #e3f2fd;
+            --text-dim: #90caf9;
+            --border-color: #1e4976;
+            --status-connected: #4caf50;
+            --status-connecting: #ff9800;
+            --status-disconnected: #f44336;
+            --unavailable-bg: #263238;
+            --unavailable-text: #607d8b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-light);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        header {
+            background: var(--bg-header);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin: 0;
+        }
+
+        .connection-status {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: flex-end;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: var(--bg-card);
+        }
+
+        .status-indicator::before {
+            content: '●';
+            font-size: 1.2rem;
+        }
+
+        .status-indicator.connected {
+            color: var(--status-connected);
+        }
+
+        .status-indicator.connected::before {
+            color: var(--status-connected);
+        }
+
+        .status-indicator.connecting {
+            color: var(--status-connecting);
+        }
+
+        .status-indicator.connecting::before {
+            color: var(--status-connecting);
+        }
+
+        .status-indicator.disconnected {
+            color: var(--status-disconnected);
+        }
+
+        .status-indicator.disconnected::before {
+            color: var(--status-disconnected);
+        }
+
+        .proxy-info {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-align: right;
+            margin-top: 5px;
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* Responsive layout */
+        @media (min-width: 768px) {
+            main {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 1200px) {
+            main {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        .sensor-card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+        }
+
+        .sensor-card.unavailable {
+            background: var(--unavailable-bg);
+            opacity: 0.6;
+        }
+
+        .sensor-card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .availability-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .availability-indicator.available {
+            background: var(--status-connected);
+        }
+
+        .availability-indicator.unavailable {
+            background: var(--status-disconnected);
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(30, 73, 118, 0.3);
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .data-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .data-value.unavailable {
+            color: var(--unavailable-text);
+            font-style: italic;
+        }
+
+        footer {
+            background: var(--bg-card);
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .timestamp {
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-top">
+            <h1>⚓ Poseidon2 BoatData</h1>
+            <div class="connection-status">
+                <div class="status-indicator disconnected" id="proxy-status">Proxy: Disconnected</div>
+                <div class="status-indicator disconnected" id="esp32-status">ESP32: Unknown</div>
+            </div>
+        </div>
+        <div class="proxy-info" id="esp32-ip">Connecting to Node.js proxy server...</div>
+    </header>
+
+    <main>
+        <!-- GPS Sensor Card -->
+        <div class="sensor-card" id="gps-card">
+            <h2>
+                GPS Navigation
+                <span class="availability-indicator" id="gps-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Latitude</span>
+                <span class="data-value" id="gps-latitude">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Longitude</span>
+                <span class="data-value" id="gps-longitude">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Course Over Ground</span>
+                <span class="data-value" id="gps-cog">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Speed Over Ground</span>
+                <span class="data-value" id="gps-sog">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Magnetic Variation</span>
+                <span class="data-value" id="gps-variation">--</span>
+            </div>
+        </div>
+
+        <!-- Compass Sensor Card -->
+        <div class="sensor-card" id="compass-card">
+            <h2>
+                Compass & Attitude
+                <span class="availability-indicator" id="compass-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">True Heading</span>
+                <span class="data-value" id="compass-true-heading">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Magnetic Heading</span>
+                <span class="data-value" id="compass-mag-heading">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Rate of Turn</span>
+                <span class="data-value" id="compass-rate-of-turn">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Heel Angle</span>
+                <span class="data-value" id="compass-heel">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Pitch Angle</span>
+                <span class="data-value" id="compass-pitch">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Heave</span>
+                <span class="data-value" id="compass-heave">--</span>
+            </div>
+        </div>
+
+        <!-- Wind Sensor Card -->
+        <div class="sensor-card" id="wind-card">
+            <h2>
+                Wind Data
+                <span class="availability-indicator" id="wind-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Apparent Wind Angle</span>
+                <span class="data-value" id="wind-angle">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Apparent Wind Speed</span>
+                <span class="data-value" id="wind-speed">--</span>
+            </div>
+        </div>
+
+        <!-- DST Sensor Card -->
+        <div class="sensor-card" id="dst-card">
+            <h2>
+                DST (Depth/Speed/Temp)
+                <span class="availability-indicator" id="dst-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Depth Below Waterline</span>
+                <span class="data-value" id="dst-depth">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Boat Speed (Water)</span>
+                <span class="data-value" id="dst-speed">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Sea Temperature</span>
+                <span class="data-value" id="dst-temp">--</span>
+            </div>
+        </div>
+
+        <!-- Rudder Sensor Card -->
+        <div class="sensor-card" id="rudder-card">
+            <h2>
+                Rudder Position
+                <span class="availability-indicator" id="rudder-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Steering Angle</span>
+                <span class="data-value" id="rudder-angle">--</span>
+            </div>
+        </div>
+
+        <!-- Engine Sensor Card -->
+        <div class="sensor-card" id="engine-card">
+            <h2>
+                Engine Monitoring
+                <span class="availability-indicator" id="engine-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Engine RPM</span>
+                <span class="data-value" id="engine-rpm">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Oil Temperature</span>
+                <span class="data-value" id="engine-oil-temp">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Alternator Voltage</span>
+                <span class="data-value" id="engine-alt-voltage">--</span>
+            </div>
+        </div>
+
+        <!-- Saildrive Sensor Card -->
+        <div class="sensor-card" id="saildrive-card">
+            <h2>
+                Saildrive Status
+                <span class="availability-indicator" id="saildrive-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Saildrive Engaged</span>
+                <span class="data-value" id="saildrive-engaged">--</span>
+            </div>
+        </div>
+
+        <!-- Battery Sensor Card -->
+        <div class="sensor-card" id="battery-card">
+            <h2>
+                Battery Banks
+                <span class="availability-indicator" id="battery-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label"><strong>House Bank (A)</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Voltage</span>
+                <span class="data-value" id="battery-voltage-a">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Current</span>
+                <span class="data-value" id="battery-current-a">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">State of Charge</span>
+                <span class="data-value" id="battery-soc-a">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Charging Status</span>
+                <span class="data-value" id="battery-charging-a">--</span>
+            </div>
+            <div class="data-row" style="margin-top: 10px;">
+                <span class="data-label"><strong>Starter Bank (B)</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Voltage</span>
+                <span class="data-value" id="battery-voltage-b">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Current</span>
+                <span class="data-value" id="battery-current-b">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">State of Charge</span>
+                <span class="data-value" id="battery-soc-b">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Charging Status</span>
+                <span class="data-value" id="battery-charging-b">--</span>
+            </div>
+        </div>
+
+        <!-- Shore Power Sensor Card -->
+        <div class="sensor-card" id="shore-power-card">
+            <h2>
+                Shore Power
+                <span class="availability-indicator" id="shore-power-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label">Shore Power Status</span>
+                <span class="data-value" id="shore-power-status">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Power Draw</span>
+                <span class="data-value" id="shore-power-draw">--</span>
+            </div>
+        </div>
+
+        <!-- Derived/Calculated Data Card -->
+        <div class="sensor-card" id="derived-card">
+            <h2>
+                Calculated Performance
+                <span class="availability-indicator" id="derived-availability"></span>
+            </h2>
+            <div class="data-row">
+                <span class="data-label"><strong>Apparent Wind (Corrected)</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">AWA (Offset Corrected)</span>
+                <span class="data-value" id="derived-awa-offset">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">AWA (Heel Corrected)</span>
+                <span class="data-value" id="derived-awa-heel">--</span>
+            </div>
+            <div class="data-row" style="margin-top: 10px;">
+                <span class="data-label"><strong>True Wind</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">True Wind Speed</span>
+                <span class="data-value" id="derived-tws">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">True Wind Angle</span>
+                <span class="data-value" id="derived-twa">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Wind Direction (Magnetic)</span>
+                <span class="data-value" id="derived-wdir">--</span>
+            </div>
+            <div class="data-row" style="margin-top: 10px;">
+                <span class="data-label"><strong>Speed & Leeway</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Speed Through Water</span>
+                <span class="data-value" id="derived-stw">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Leeway Angle</span>
+                <span class="data-value" id="derived-leeway">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Velocity Made Good</span>
+                <span class="data-value" id="derived-vmg">--</span>
+            </div>
+            <div class="data-row" style="margin-top: 10px;">
+                <span class="data-label"><strong>Current</strong></span>
+                <span class="data-value"></span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Speed of Current</span>
+                <span class="data-value" id="derived-soc">--</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Direction of Current</span>
+                <span class="data-value" id="derived-doc">--</span>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div>Last Update: <span class="timestamp" id="last-update">Never</span></div>
+        <div style="margin-top: 10px; font-size: 0.8rem;">Poseidon2 WiFi Gateway | Node.js WebSocket Proxy</div>
+    </footer>
+
+    <script>
+        // WebSocket connection
+        let ws = null;
+        let reconnectTimeout = null;
+        let esp32Connected = false;
+
+        // Unit conversion functions
+        function radToDeg(rad) {
+            if (rad === null || rad === undefined || isNaN(rad)) return null;
+            return (rad * 180.0 / Math.PI).toFixed(1);
+        }
+
+        function radToSignedDeg(rad) {
+            if (rad === null || rad === undefined || isNaN(rad)) return null;
+            let deg = rad * 180.0 / Math.PI;
+            if (deg > 180) deg -= 360;
+            if (deg < -180) deg += 360;
+            return deg.toFixed(1);
+        }
+
+        function msToKnots(ms) {
+            if (ms === null || ms === undefined || isNaN(ms)) return null;
+            return (ms * 1.94384).toFixed(1);
+        }
+
+        function formatCoordinate(value) {
+            if (value === null || value === undefined || isNaN(value)) return null;
+            return value.toFixed(6);
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Never';
+            const ageSeconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (ageSeconds < 60) return ageSeconds + 's ago';
+            if (ageSeconds < 3600) return Math.floor(ageSeconds / 60) + 'm ago';
+            return Math.floor(ageSeconds / 3600) + 'h ago';
+        }
+
+        // Update DOM element with value or "N/A"
+        function updateValue(elementId, value, unit = '') {
+            const elem = document.getElementById(elementId);
+            if (!elem) return;
+
+            if (value === null || value === undefined || value === '' || (typeof value === 'number' && isNaN(value))) {
+                elem.textContent = 'N/A';
+                elem.classList.add('unavailable');
+            } else {
+                elem.textContent = value + (unit ? ' ' + unit : '');
+                elem.classList.remove('unavailable');
+            }
+        }
+
+        // Update sensor card availability
+        function updateCardAvailability(sensorName, available) {
+            const card = document.getElementById(sensorName + '-card');
+            const indicator = document.getElementById(sensorName + '-availability');
+
+            if (!card || !indicator) return;
+
+            if (available) {
+                card.classList.remove('unavailable');
+                indicator.classList.add('available');
+                indicator.classList.remove('unavailable');
+            } else {
+                card.classList.add('unavailable');
+                indicator.classList.remove('available');
+                indicator.classList.add('unavailable');
+            }
+        }
+
+        // Update GPS data
+        function updateGPS(data) {
+            if (!data) return;
+
+            updateValue('gps-latitude', formatCoordinate(data.latitude), '°');
+            updateValue('gps-longitude', formatCoordinate(data.longitude), '°');
+            updateValue('gps-cog', radToDeg(data.cog), '°');
+            updateValue('gps-sog', data.sog ? data.sog.toFixed(1) : null, 'knots');
+            updateValue('gps-variation', radToDeg(data.variation), '°');
+
+            updateCardAvailability('gps', data.available);
+        }
+
+        // Update Compass data
+        function updateCompass(data) {
+            if (!data) return;
+
+            updateValue('compass-true-heading', radToDeg(data.trueHeading), '°');
+            updateValue('compass-mag-heading', radToDeg(data.magneticHeading), '°');
+            updateValue('compass-rate-of-turn', radToDeg(data.rateOfTurn), '°/s');
+            updateValue('compass-heel', radToDeg(data.heelAngle), '°');
+            updateValue('compass-pitch', radToDeg(data.pitchAngle), '°');
+            updateValue('compass-heave', data.heave !== null ? data.heave.toFixed(2) : null, 'm');
+
+            updateCardAvailability('compass', data.available);
+        }
+
+        // Update Wind data
+        function updateWind(data) {
+            if (!data) return;
+
+            updateValue('wind-angle', radToSignedDeg(data.apparentWindAngle), '°');
+            updateValue('wind-speed', data.apparentWindSpeed ? data.apparentWindSpeed.toFixed(1) : null, 'knots');
+
+            updateCardAvailability('wind', data.available);
+        }
+
+        // Update DST data
+        function updateDST(data) {
+            if (!data) return;
+
+            updateValue('dst-depth', data.depth !== null ? data.depth.toFixed(1) : null, 'm');
+            updateValue('dst-speed', msToKnots(data.measuredBoatSpeed), 'knots');
+            updateValue('dst-temp', data.seaTemperature !== null ? data.seaTemperature.toFixed(1) : null, '°C');
+
+            updateCardAvailability('dst', data.available);
+        }
+
+        // Update Rudder data
+        function updateRudder(data) {
+            if (!data) return;
+
+            updateValue('rudder-angle', radToDeg(data.steeringAngle), '°');
+
+            updateCardAvailability('rudder', data.available);
+        }
+
+        // Update Engine data
+        function updateEngine(data) {
+            if (!data) return;
+
+            updateValue('engine-rpm', data.engineRev !== null ? data.engineRev.toFixed(0) : null, 'RPM');
+            updateValue('engine-oil-temp', data.oilTemperature !== null ? data.oilTemperature.toFixed(1) : null, '°C');
+            updateValue('engine-alt-voltage', data.alternatorVoltage !== null ? data.alternatorVoltage.toFixed(1) : null, 'V');
+
+            updateCardAvailability('engine', data.available);
+        }
+
+        // Update Saildrive data
+        function updateSaildrive(data) {
+            if (!data) return;
+
+            updateValue('saildrive-engaged', data.saildriveEngaged ? 'Engaged' : 'Retracted', '');
+
+            updateCardAvailability('saildrive', data.available);
+        }
+
+        // Update Battery data
+        function updateBattery(data) {
+            if (!data) return;
+
+            // Bank A
+            updateValue('battery-voltage-a', data.voltageA !== null ? data.voltageA.toFixed(2) : null, 'V');
+            updateValue('battery-current-a', data.amperageA !== null ? data.amperageA.toFixed(1) : null, 'A');
+            updateValue('battery-soc-a', data.stateOfChargeA !== null ? data.stateOfChargeA.toFixed(1) : null, '%');
+
+            let chargingStatusA = [];
+            if (data.shoreChargerOnA) chargingStatusA.push('Shore');
+            if (data.engineChargerOnA) chargingStatusA.push('Engine');
+            updateValue('battery-charging-a', chargingStatusA.length > 0 ? chargingStatusA.join(', ') : 'No', '');
+
+            // Bank B
+            updateValue('battery-voltage-b', data.voltageB !== null ? data.voltageB.toFixed(2) : null, 'V');
+            updateValue('battery-current-b', data.amperageB !== null ? data.amperageB.toFixed(1) : null, 'A');
+            updateValue('battery-soc-b', data.stateOfChargeB !== null ? data.stateOfChargeB.toFixed(1) : null, '%');
+
+            let chargingStatusB = [];
+            if (data.shoreChargerOnB) chargingStatusB.push('Shore');
+            if (data.engineChargerOnB) chargingStatusB.push('Engine');
+            updateValue('battery-charging-b', chargingStatusB.length > 0 ? chargingStatusB.join(', ') : 'No', '');
+
+            updateCardAvailability('battery', data.available);
+        }
+
+        // Update Shore Power data
+        function updateShorePower(data) {
+            if (!data) return;
+
+            updateValue('shore-power-status', data.shorePowerOn ? 'Connected' : 'Disconnected', '');
+            updateValue('shore-power-draw', data.power !== null ? data.power.toFixed(0) : null, 'W');
+
+            updateCardAvailability('shore-power', data.available);
+        }
+
+        // Update Derived/Calculated data
+        function updateDerived(data) {
+            if (!data) return;
+
+            // Corrected apparent wind angles
+            updateValue('derived-awa-offset', radToSignedDeg(data.awaOffset), '°');
+            updateValue('derived-awa-heel', radToSignedDeg(data.awaHeel), '°');
+
+            // True wind
+            updateValue('derived-tws', data.tws !== null ? data.tws.toFixed(1) : null, 'knots');
+            updateValue('derived-twa', radToSignedDeg(data.twa), '°');
+            updateValue('derived-wdir', radToDeg(data.wdir), '°');
+
+            // Speed and leeway
+            updateValue('derived-stw', data.stw !== null ? data.stw.toFixed(1) : null, 'knots');
+            updateValue('derived-leeway', radToDeg(data.leeway), '°');
+            updateValue('derived-vmg', data.vmg !== null ? data.vmg.toFixed(1) : null, 'knots');
+
+            // Current
+            updateValue('derived-soc', data.soc !== null ? data.soc.toFixed(1) : null, 'knots');
+            updateValue('derived-doc', radToDeg(data.doc), '°');
+
+            updateCardAvailability('derived', data.available);
+        }
+
+        // Update all dashboard data
+        function updateDashboard(data) {
+            if (!data) return;
+
+            // Update all sensor groups
+            updateGPS(data.gps);
+            updateCompass(data.compass);
+            updateWind(data.wind);
+            updateDST(data.dst);
+            updateRudder(data.rudder);
+            updateEngine(data.engine);
+            updateSaildrive(data.saildrive);
+            updateBattery(data.battery);
+            updateShorePower(data.shorePower);
+            updateDerived(data.derived);
+
+            // Update timestamp
+            if (data.timestamp) {
+                document.getElementById('last-update').textContent = formatTimestamp(data.timestamp);
+            }
+        }
+
+        // Update connection status indicators
+        function updateProxyStatus(status) {
+            const elem = document.getElementById('proxy-status');
+            elem.className = 'status-indicator ' + status;
+
+            switch (status) {
+                case 'connected':
+                    elem.textContent = 'Proxy: Connected';
+                    break;
+                case 'connecting':
+                    elem.textContent = 'Proxy: Connecting...';
+                    break;
+                case 'disconnected':
+                    elem.textContent = 'Proxy: Disconnected';
+                    break;
+            }
+        }
+
+        function updateESP32Status(connected, ip) {
+            const elem = document.getElementById('esp32-status');
+            const ipElem = document.getElementById('esp32-ip');
+
+            if (connected) {
+                elem.className = 'status-indicator connected';
+                elem.textContent = 'ESP32: Connected';
+                if (ip) {
+                    ipElem.textContent = `ESP32 @ ${ip}`;
+                }
+            } else {
+                elem.className = 'status-indicator disconnected';
+                elem.textContent = 'ESP32: Disconnected';
+                if (ip) {
+                    ipElem.textContent = `ESP32 @ ${ip} (disconnected)`;
+                }
+            }
+
+            esp32Connected = connected;
+        }
+
+        // WebSocket event handlers
+        function handleConnect() {
+            console.log('Connected to proxy server');
+            updateProxyStatus('connected');
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+        }
+
+        function handleMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                // Handle status messages from proxy
+                if (data.type === 'status') {
+                    updateESP32Status(data.esp32Connected, data.esp32Ip);
+                } else {
+                    // Handle boat data
+                    updateDashboard(data);
+                }
+            } catch (error) {
+                console.error('JSON parse error:', error);
+            }
+        }
+
+        function handleError(error) {
+            console.error('WebSocket error:', error);
+        }
+
+        function handleClose() {
+            console.log('Disconnected from proxy server');
+            updateProxyStatus('disconnected');
+            updateESP32Status(false, null);
+
+            // Auto-reconnect after 5 seconds
+            reconnectTimeout = setTimeout(() => {
+                updateProxyStatus('connecting');
+                connectWebSocket();
+            }, 5000);
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket() {
+            try {
+                const wsUrl = 'ws://' + location.host + '/boatdata';
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = handleConnect;
+                ws.onmessage = handleMessage;
+                ws.onerror = handleError;
+                ws.onclose = handleClose;
+            } catch (error) {
+                console.error('Failed to create WebSocket:', error);
+                updateProxyStatus('disconnected');
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateProxyStatus('connecting');
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>

@@ -48,6 +48,11 @@ Built with PlatformIO and Arduino framework, it runs on SH-ESP32 hardware design
 - ✅ **ReactESP**: Event-driven architecture for responsive operation
 - ✅ **OLED Display**: Real-time system status and diagnostics on 128x64 SSD1306
 - ✅ **Loop Frequency Monitoring**: Real-time main loop frequency measurement (5-second averaging)
+- ✅ **WebUI Dashboard** (R009): Real-time marine sensor data visualization
+  - WebSocket streaming at 1 Hz with 10 sensor cards
+  - GPS, compass, wind, DST sensors, engine, battery, shore power, calculated performance
+  - Responsive HTML dashboard with auto-reconnect
+  - Optional Node.js proxy for multi-client support
 - 🚧 **SD Card Logging**: Optional data recording
 
 ## Hardware Requirements
@@ -327,6 +332,159 @@ pio test -e native -f test_oled_units
 pio test -e esp32dev_test -f test_oled_hardware
 ```
 
+## WebUI Dashboard
+
+### Overview
+Real-time marine sensor data visualization via WebSocket streaming at 1 Hz. The dashboard displays all 10 sensor groups with automatic updates and unit conversions.
+
+### Access Dashboard
+
+**Direct from ESP32**:
+```
+http://<ESP32_IP>:3030/stream
+```
+
+Example: `http://192.168.10.3:3030/stream`
+
+**Via Node.js Proxy** (recommended for multiple clients):
+```bash
+cd nodejs-boatdata-viewer
+npm install      # First time only
+npm start        # Starts proxy on localhost:3030
+
+# Access dashboard
+http://localhost:3030/stream
+```
+
+### Dashboard Features
+
+#### 10 Sensor Cards
+
+1. **GPS Navigation**: Latitude, Longitude, COG, SOG, Variation
+2. **Compass & Attitude**: True/Magnetic Heading, Rate of Turn, Heel, Pitch, Heave
+3. **Wind Data**: Apparent Wind Angle, Apparent Wind Speed
+4. **DST**: Depth, Boat Speed, Sea Temperature
+5. **Rudder**: Steering Angle
+6. **Engine**: RPM, Oil Temperature, Alternator Voltage
+7. **Saildrive**: Engagement Status
+8. **Battery**: Dual banks (House/Starter) with voltage, amperage, SoC, charger status
+9. **Shore Power**: Connection status, power draw
+10. **Calculated Performance**:
+    - Apparent Wind (Corrected): AWA Offset, AWA Heel
+    - True Wind: TWS, TWA, Wind Direction
+    - Speed & Leeway: STW, Leeway, VMG
+    - Current: SOC, DOC
+
+#### Real-Time Updates
+- **Update rate**: 1 Hz (1-second refresh)
+- **Unit conversions**: Radians→Degrees, meters/second→Knots
+- **Availability indicators**: Color-coded cards (green=available, gray=unavailable)
+- **Connection status**: Real-time WebSocket connection indicator
+
+#### Auto-Reconnect
+- Exponential backoff: 1s, 2s, 4s (max 10s)
+- Handles firmware updates and ESP32 reboots
+- Visual connection status indicator
+
+### Node.js Proxy Server
+
+**Purpose**: Relay ESP32 WebSocket data to multiple browser clients
+
+**Why Use Proxy**:
+- ESP32 WebSocket limited to ~8 concurrent connections
+- Monitor data while testing firmware
+- Access from different network segments
+- No ESP32 resource impact (single connection to ESP32)
+
+**Setup**:
+1. Configure ESP32 IP in `nodejs-boatdata-viewer/config.json`
+2. Install dependencies: `npm install`
+3. Start proxy: `npm start`
+4. Access dashboard: `http://localhost:3030/stream`
+
+**Files**:
+- `server.js`: WebSocket relay logic (231 lines)
+- `config.json`: ESP32 IP/port configuration
+- `public/stream.html`: Dashboard HTML (identical to ESP32 version)
+- `package.json`: Node.js dependencies
+
+### WebSocket API
+
+**Endpoint**: `ws://<ESP32_IP>:3030/boatdata`
+
+**Message Format**: JSON (1 Hz broadcast)
+```json
+{
+  "timestamp": 1234567890,
+  "gps": { "latitude": 37.7749, "longitude": -122.4194, ... },
+  "compass": { "trueHeading": 1.571, "magneticHeading": 1.833, ... },
+  "wind": { ... },
+  "dst": { ... },
+  "rudder": { ... },
+  "engine": { ... },
+  "saildrive": { ... },
+  "battery": { ... },
+  "shorePower": { ... },
+  "derived": { ... }
+}
+```
+
+**Connection Limits**:
+- **Direct ESP32**: 8 concurrent WebSocket clients (ESPAsyncWebServer limit)
+- **Via Proxy**: Unlimited clients (Node.js handles relay)
+
+### Troubleshooting
+
+**Dashboard not loading**:
+1. Verify ESP32 connected to WiFi: `curl http://<ESP32_IP>/wifi-status`
+2. Upload dashboard file: `pio run --target uploadfs`
+3. Check LittleFS mounted: Monitor WebSocket logs for "FILESYSTEM_MOUNTED"
+4. Test HTTP endpoint: `curl http://<ESP32_IP>:3030/stream`
+
+**WebSocket not connecting**:
+1. Check firewall allows port 3030
+2. Verify WebSocket endpoint: `ws://<ESP32_IP>:3030/boatdata`
+3. Browser console: Check for WebSocket connection errors
+4. Monitor ESP32 logs: `python3 src/helpers/ws_logger.py <ESP32_IP> --filter WebSocket`
+
+**No data updates**:
+1. Check if sensor data available (cards show "Not Available")
+2. Monitor serialization logs: `python3 src/helpers/ws_logger.py <ESP32_IP> --filter BoatDataSerializer`
+3. Verify 1 Hz broadcast loop running (check main.cpp line 694)
+4. Browser console: Check if WebSocket receiving messages
+
+**Derived data not calculating**:
+1. Verify sensor availability: Requires GPS, Compass, Wind, DST all available
+2. Check CalculationEngine initialized: Monitor for "CALCULATION_ENGINE" logs
+3. Verify 200ms calculation loop running (main.cpp line 650)
+4. Monitor for calculation overruns: Watch for "OVERRUN" warnings
+
+### Performance
+- **Serialization**: <50ms per JSON conversion (@ 240 MHz ESP32)
+- **Payload size**: ~1500-1800 bytes JSON per message
+- **Memory footprint**: ~3KB RAM (0.9% of ESP32), +15KB flash
+- **Latency**: <100ms from sensor update to browser display
+
+### Testing
+```bash
+# BoatDataSerializer unit tests
+pio test -e native -f test_serializer_units
+
+# WebSocket integration tests
+pio test -e native -f test_webui_integration
+
+# Hardware tests (ESP32 + browser required)
+pio test -e esp32dev_test -f test_webui_hardware
+```
+
+**Manual Testing**:
+1. Upload firmware: `pio run --target upload`
+2. Upload dashboard: `pio run --target uploadfs`
+3. Access: `http://<ESP32_IP>:3030/stream`
+4. Verify all 10 cards display
+5. Check 1 Hz updates (watch timestamps)
+6. Test disconnect/reconnect (watch auto-reconnect)
+
 ## Development
 
 ### Project Structure
@@ -359,6 +517,7 @@ Poseidon2/
 │   │   ├── WiFiConnectionState.h        # WiFi connection state structure
 │   │   ├── WiFiCredentials.h            # WiFi credentials structure
 │   │   ├── BoatData.cpp/h               # Central marine data repository
+│   │   ├── BoatDataSerializer.cpp/h     # JSON serialization for WebSocket streaming
 │   │   ├── SourcePrioritizer.cpp/h      # Multi-source GPS/compass prioritization
 │   │   ├── CalculationEngine.cpp/h      # Derived sailing parameters
 │   │   ├── CalibrationManager.cpp/h     # Persistent calibration storage
@@ -406,6 +565,17 @@ Poseidon2/
 │   ├── test_oled_integration/           # OLED integration tests (native)
 │   ├── test_oled_units/                 # OLED unit tests (native)
 │   └── test_oled_hardware/              # OLED hardware tests (ESP32)
+├── data/                                # LittleFS filesystem files
+│   ├── stream.html                      # WebUI dashboard (served from ESP32)
+│   ├── calibration.json                 # Default calibration parameters
+│   └── log-filter.json                  # WebSocket logging filter config
+├── nodejs-boatdata-viewer/              # Node.js WebSocket proxy server
+│   ├── server.js                        # WebSocket relay and HTTP server
+│   ├── config.json                      # ESP32 IP/port configuration
+│   ├── package.json                     # Node.js dependencies
+│   ├── public/
+│   │   └── stream.html                  # Dashboard (identical to ESP32 version)
+│   └── README.md                        # Proxy server documentation
 ├── examples/poseidongw/                 # Reference implementation
 ├── specs/                               # Feature specifications
 │   ├── 001-create-feature-spec/         # WiFi management spec
@@ -413,14 +583,16 @@ Poseidon2/
 │   ├── 003-boatdata-feature-as/         # BoatData feature spec
 │   ├── 004-removal-of-udp/              # UDP removal documentation
 │   ├── 005-oled-basic-info/             # OLED display feature spec
-│   └── 008-enhanced-boatdata-following/ # Enhanced BoatData spec (R005)
+│   ├── 008-enhanced-boatdata-following/ # Enhanced BoatData spec (R005)
+│   └── 011-simple-webui-as/             # WebUI dashboard spec (R009)
 ├── user_requirements/                   # User requirements
 │   ├── R001 - foundation.md             # Core requirements
 │   ├── R002 - boatdata.md               # BoatData requirements
 │   ├── R003 - cleanup udp leftovers.md  # UDP cleanup requirements
 │   ├── R004 - OLED basic info.md        # OLED display requirements
-│   └── R005 - enhanced boatdata.md      # Enhanced BoatData requirements
-│   └── R007 - NMEA 0183 data.md         # NMEA 0183 handlers
+│   ├── R005 - enhanced boatdata.md      # Enhanced BoatData requirements
+│   ├── R007 - NMEA 0183 data.md         # NMEA 0183 handlers
+│   └── R009 - webui.md                  # WebUI dashboard requirements
 ├── .specify/                            # Development framework
 │   ├── memory/
 │   │   └── constitution.md              # Development principles (v1.2.0)
@@ -577,10 +749,11 @@ pio run -t uploadfs
 - **WiFi Config**: ~334 bytes RAM (3 networks)
 - **BoatData v2.0**: ~560 bytes RAM (enhanced structures, static allocation)
 - **OLED Display**: ~1.1 KB RAM (97 bytes + 1KB framebuffer)
+- **WebUI/Serialization**: ~3 KB RAM (2KB JSON buffer + WebSocket overhead)
 - **1-Wire Sensors**: ~150 bytes RAM (event loop overhead)
 - **Flash Storage**: ~200 bytes (config files)
-- **Code Size**: ~938 KB flash (47.7% of 1.9 MB partition)
-- **RAM Usage**: ~44 KB (13.5% of 320 KB)
+- **Code Size**: ~1046 KB flash (53.2% of 1.9 MB partition)
+- **RAM Usage**: ~45 KB (13.8% of 320 KB)
 
 ### Timing Benchmarks
 - **Boot to services ready**: < 2 seconds
@@ -620,7 +793,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ BoatData | ✅ Enhanced BoatData (R005) | ✅ NMEA 0183 | 🚧 NMEA 2000 In Progress
+**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ BoatData | ✅ Enhanced BoatData (R005) | ✅ NMEA 0183 | ✅ WebUI Dashboard (R009) | 🚧 NMEA 2000 In Progress
 
-**Last Updated**: 2025-10-09
-**Version**: 1.1.0 (WiFi Management + OLED Display)
+**Last Updated**: 2025-10-13
+**Version**: 1.2.0 (WiFi Management + OLED Display + WebUI Dashboard)

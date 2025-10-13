@@ -41,6 +41,7 @@
 #include "components/NMEA2000Handlers.h"
 #include "components/NMEA0183Handler.h"
 #include "components/OneWireSensorPoller.h"
+#include "components/BoatDataSerializer.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -100,9 +101,54 @@ NMEA0183Handler* nmea0183Handler = nullptr;
 // NMEA2000 components (T027)
 tNMEA2000* nmea2000 = nullptr;
 
+// WebUI components (Feature 011-simple-webui-as)
+AsyncWebSocket wsBoatData("/boatdata");
+
 // Reboot management
 bool rebootScheduled = false;
 unsigned long rebootTime = 0;
+
+/**
+ * @brief Setup /boatdata WebSocket endpoint
+ * @param server AsyncWebServer instance
+ *
+ * Configures WebSocket event handlers for BoatData streaming.
+ * - Logs client connections/disconnections
+ * - Enforces maximum 10 concurrent clients
+ * - Rejects connections if limit exceeded
+ *
+ * Part of Feature 011-simple-webui-as (US1: Real-time BoatData Streaming)
+ */
+void setupBoatDataWebSocket(AsyncWebServer* server) {
+    wsBoatData.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client,
+                          AwsEventType type, void* arg, uint8_t* data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            // Check maximum client limit (10 clients)
+            if (server->count() > 10) {
+                logger.broadcastLog(LogLevel::WARN, "BoatDataStream", "MAX_CLIENTS_EXCEEDED",
+                    String(F("{\"clientId\":")) + client->id() + F(",\"action\":\"rejected\"}"));
+                client->close(1011, "Server overload - max 10 clients");
+                return;
+            }
+
+            // Log new connection
+            logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "CLIENT_CONNECTED",
+                String(F("{\"clientId\":")) + client->id() +
+                F(",\"totalClients\":") + server->count() + F("}"));
+
+        } else if (type == WS_EVT_DISCONNECT) {
+            // Log disconnection
+            logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "CLIENT_DISCONNECTED",
+                String(F("{\"clientId\":")) + client->id() +
+                F(",\"totalClients\":") + server->count() + F("}"));
+        }
+    });
+
+    server->addHandler(&wsBoatData);
+
+    logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "ENDPOINT_REGISTERED",
+        F("{\"path\":\"/boatdata\",\"maxClients\":10}"));
+}
 
 /**
  * @brief Handle WiFi connection success event
@@ -143,6 +189,25 @@ void onWiFiConnected() {
 
         // Attach WebSocket logger to web server for reliable logging
         logger.begin(webServer->getServer(), "/logs");
+
+        // Setup /boatdata WebSocket endpoint (Feature 011: US1)
+        setupBoatDataWebSocket(webServer->getServer());
+
+        // Setup /stream HTTP endpoint for HTML dashboard (Feature 011: US2)
+        webServer->getServer()->on("/stream", HTTP_GET, [](AsyncWebServerRequest *request) {
+            if (!LittleFS.exists("/stream.html")) {
+                logger.broadcastLog(LogLevel::ERROR, "HTTPFileServer", "FILE_NOT_FOUND",
+                    F("{\"path\":\"/stream.html\"}"));
+                request->send(404, "text/plain", "Dashboard file not found in LittleFS");
+                return;
+            }
+
+            request->send(LittleFS, "/stream.html", "text/html");
+
+            String clientIP = request->client()->remoteIP().toString();
+            logger.broadcastLog(LogLevel::DEBUG, "HTTPFileServer", "FILE_SERVED",
+                String(F("{\"path\":\"/stream.html\",\"clientIP\":\"")) + clientIP + F("\"}"));
+        });
 
         // Register log filter configuration endpoint
         webServer->getServer()->on("/log-filter", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -254,9 +319,8 @@ void calculateDerivedParameters() {
     unsigned long startMicros = micros();
 
     // Execute calculation cycle
-    // Note: CalculationEngine operates directly on BoatData's internal structure
-    // For now, we'll call it through the interface methods
-    // TODO: Add direct calculation method once CalculationEngine interface is finalized
+    // CalculationEngine operates directly on BoatData's internal structure
+    calculationEngine->calculate(boatData->getDataStructure());
 
     // Calculate duration in milliseconds
     unsigned long durationMicros = micros() - startMicros;
@@ -625,6 +689,32 @@ void setup() {
 
     logger.broadcastLog(LogLevel::DEBUG, "NMEA2000", "LOOP_REGISTERED",
                         "{\"interval\":10}");
+
+    // Feature 011: BoatData WebSocket broadcast loop (1 Hz = 1000ms)
+    app.onRepeat(1000, []() {
+        // Only broadcast if clients are connected (optimization)
+        if (wsBoatData.count() > 0 && boatData != nullptr) {
+            String json = BoatDataSerializer::toJSON(boatData);
+
+            // Check for serialization failure
+            if (json.length() == 0) {
+                logger.broadcastLog(LogLevel::ERROR, "BoatDataStream", "SERIALIZATION_FAILED",
+                    F("{\"reason\":\"empty JSON returned\"}"));
+                return;
+            }
+
+            // Broadcast to all connected clients
+            wsBoatData.textAll(json);
+
+            // Log broadcast event (DEBUG level - optional in production)
+            logger.broadcastLog(LogLevel::DEBUG, "BoatDataStream", "BROADCAST",
+                String(F("{\"clients\":")) + wsBoatData.count() +
+                F(",\"size\":") + json.length() + F("}"));
+        }
+    });
+
+    logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "BROADCAST_TIMER_STARTED",
+                        "{\"interval_ms\":1000,\"frequency_hz\":1}");
 
     // T028: Display refresh loops - 1s animation, 5s status
     app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {

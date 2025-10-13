@@ -133,6 +133,17 @@ public:
      */
     void incrementActisenseCount();
 
+    /**
+     * @brief Get pointer to internal data structure for CalculationEngine
+     *
+     * Provides direct access to the internal BoatDataStructure for the
+     * CalculationEngine to perform derived parameter calculations.
+     *
+     * @return Pointer to internal BoatDataStructure
+     * @note This is intended for CalculationEngine use only
+     */
+    BoatDataStructure* getDataStructure();
+
 private:
     // Central data structure
     BoatDataStructure data;

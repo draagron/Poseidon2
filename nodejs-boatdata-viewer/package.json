@@ -1,0 +1,23 @@
+{
+  "name": "boatdata-viewer",
+  "version": "1.0.0",
+  "description": "Node.js WebSocket proxy for ESP32 BoatData streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "nmea",
+    "websocket",
+    "boat",
+    "marine",
+    "esp32"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "esp32": {
+    "ip": "192.168.10.3",
+    "port": 80,
+    "wsPath": "/boatdata"
+  },
+  "server": {
+    "port": 3030,
+    "reconnectInterval": 5000
+  }
+}
