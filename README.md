@@ -400,7 +400,7 @@ http://localhost:3030/stream
 1. Configure ESP32 IP in `nodejs-boatdata-viewer/config.json`
 2. Install dependencies: `npm install`
 3. Start proxy: `npm start`
-4. Access dashboard: `http://localhost:3030/stream`
+4. Access dashboard: `http://localhost:3030/stream.html`
 
 **Files**:
 - `server.js`: WebSocket relay logic (231 lines)
@@ -439,7 +439,7 @@ http://localhost:3030/stream
 1. Verify ESP32 connected to WiFi: `curl http://<ESP32_IP>/wifi-status`
 2. Upload dashboard file: `pio run --target uploadfs`
 3. Check LittleFS mounted: Monitor WebSocket logs for "FILESYSTEM_MOUNTED"
-4. Test HTTP endpoint: `curl http://<ESP32_IP>:3030/stream`
+4. Test HTTP endpoint: `curl http://<ESP32_IP>:3030/stream.html`
 
 **WebSocket not connecting**:
 1. Check firewall allows port 3030
