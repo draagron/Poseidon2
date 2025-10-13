@@ -590,6 +590,10 @@ void setup() {
         // Graceful degradation: Continue operation without display (FR-027)
     }
 
+    // Feature 012: Initialize source statistics tracking (MUST be before any handler creation)
+    Serial.println(F("Initializing source statistics tracking..."));
+    sourceRegistry.init(&logger);
+
     // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
     Serial.println(F("Initializing NMEA0183 handler..."));
     // Initialize Serial2 with explicit GPIO pins: RX=25, TX=27 (SH-ESP32 board)
@@ -675,10 +679,6 @@ void setup() {
         RegisterN2kHandlers(nmea2000, boatData, &logger, &sourceRegistry);
         Serial.println(F("NMEA2000 handlers registered - processing 13 PGNs"));
     }
-
-    // Feature 012: Initialize source statistics tracking
-    Serial.println(F("Initializing source statistics tracking..."));
-    sourceRegistry.init(&logger);
 
     // T030: Register NMEA2000 sources with BoatData prioritizer
     // Note: Currently only GPS and COMPASS sensor types are supported in SourcePrioritizer
