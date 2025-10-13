@@ -1,0 +1,55 @@
+Sentence,Description
+AAM,Waypoint Arrival Alarm
+ACK,Alarm Acknowledgement
+ADS,Automatic Device Status
+ALM,GPS Almanac Data
+APA,Autopilot Sentence "A"
+APB,Autopilot Sentence "B"
+BOD,Bearing - Waypoint to Waypoint
+BWC,Bearing & Distance to Waypoint - Great Circle
+BWR,Bearing and Distance to Waypoint - Rhumb Line
+BWW,Bearing - Waypoint to Waypoint
+CUR,Water Current Layer
+DBK,Depth Below Keel
+DBS,Depth Below Surface
+DBT,Depth below transducer
+DCN,Decca Position (obsolete)
+DPT,Depth of Water
+DSC,Digital Selective Calling Information
+DTM,Datum Reference
+GGA,Global Positioning System Fix Data
+GLL,Geographic Position - Latitude/Longitude
+GNS,Fix data
+GRS,GPS Range Residuals
+GSA,GPS DOP and active satellites
+GST,GPS Pseudorange Noise Statistics
+GSV,Satellites in view
+GXA,TRANSIT Position
+HDG,Heading - Deviation & Variation
+HDM,Heading - Magnetic
+HDT,Heading - True
+HSC,Heading Steering Command
+MTW,Mean Temperature of Water
+MWD,Wind Direction & Speed
+MWV,Wind Speed and Angle
+OSD,Own Ship Data
+RMA,Recommended Minimum Navigation Information
+RMB,Recommended Minimum Navigation Information
+RMC,Recommended Minimum Navigation Information
+ROT,Rate Of Turn
+RSA,Rudder Sensor Angle
+RTE,Routes
+VBW,Dual Ground/Water Speed
+VDR,Set and Drift
+VHW,Water speed and heading
+VLW,Distance Traveled through Water
+VPW,Speed - Measured Parallel to Wind
+VTG,Track made good and Ground speed
+VWR,Relative Wind Speed and Angle
+WPL,Waypoint Location
+XDR,Transducer Measurement
+XTE,Cross-Track Error
+XTR,Cross Track Error - Dead Reckoning
+ZDA,Time & Date - UTC
+ZFO,UTC & Time from origin Waypoint
+ZTG,UTC & Time to Destination Waypoint
