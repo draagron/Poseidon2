@@ -15,7 +15,7 @@ String SourceStatsSerializer::toFullSnapshotJSON(const SourceRegistry* registry)
     StaticJsonDocument<FULL_SNAPSHOT_BUFFER_SIZE> doc;
 
     // Message envelope
-    doc["event"] = "fullSnapshot";
+    doc["type"] = "fullSnapshot";
     doc["version"] = 1;
     doc["timestamp"] = millis();
 
@@ -77,7 +77,7 @@ String SourceStatsSerializer::toDeltaJSON(const SourceRegistry* registry) {
     StaticJsonDocument<DELTA_UPDATE_BUFFER_SIZE> doc;
 
     // Message envelope
-    doc["event"] = "deltaUpdate";
+    doc["type"] = "deltaUpdate";
     doc["timestamp"] = millis();
 
     // Create changes array
@@ -126,7 +126,7 @@ String SourceStatsSerializer::toRemovalJSON(const char* sourceId, const char* re
 
     StaticJsonDocument<256> doc;
 
-    doc["event"] = "sourceRemoved";
+    doc["type"] = "sourceRemoved";
     doc["sourceId"] = sourceId;
     doc["timestamp"] = millis();
     doc["reason"] = reason;
