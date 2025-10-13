@@ -46,28 +46,47 @@ app.get('/api/config', (req, res) => {
         esp32: {
             ip: config.esp32.ip,
             port: config.esp32.port,
-            connected: esp32Connected,
-            lastMessageTime: lastMessageTime ? new Date(lastMessageTime).toISOString() : null
+            boatdata: {
+                connected: esp32Connected,
+                lastMessageTime: lastMessageTime ? new Date(lastMessageTime).toISOString() : null,
+                clients: browserClients.size
+            },
+            sourceStats: {
+                connected: esp32SourceStatsConnected,
+                lastMessageTime: lastSourceStatsMessageTime ? new Date(lastSourceStatsMessageTime).toISOString() : null,
+                clients: sourceStatsClients.size
+            }
         },
         server: {
             port: config.server.port,
-            connectedClients: browserClients.size,
+            totalClients: browserClients.size + sourceStatsClients.size,
             uptime: Math.floor((Date.now() - serverStartTime) / 1000)
         }
     });
 });
 
-// WebSocket Server (for browser clients)
+// WebSocket Server for /boatdata (for browser clients)
 const wss = new WebSocket.Server({ server, path: '/boatdata' });
+
+// WebSocket Server for /source-stats (for browser clients)
+const wssSourceStats = new WebSocket.Server({ server, path: '/source-stats' });
 
 // Track connected browser clients
 const browserClients = new Set();
+const sourceStatsClients = new Set();
 
-// ESP32 WebSocket client state
+// ESP32 WebSocket client state for /boatdata
 let esp32Client = null;
 let esp32Connected = false;
 let reconnectTimer = null;
 let lastMessageTime = null;
+
+// ESP32 WebSocket client state for /source-stats
+let esp32SourceStatsClient = null;
+let esp32SourceStatsConnected = false;
+let reconnectSourceStatsTimer = null;
+let lastSourceStatsMessageTime = null;
+
 const serverStartTime = Date.now();
 
 // Handle browser client connections
@@ -89,6 +108,28 @@ wss.on('connection', (ws, req) => {
     ws.on('error', (error) => {
         console.error(`[BROWSER] Client error: ${clientId}:`, error.message);
         browserClients.delete(ws);
+    });
+});
+
+// Handle source stats browser client connections
+wssSourceStats.on('connection', (ws, req) => {
+    const clientId = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
+    sourceStatsClients.add(ws);
+
+    console.log(`[SOURCE-STATS] Client connected: ${clientId} (total: ${sourceStatsClients.size})`);
+
+    // Send connection status to new client
+    sendSourceStatsStatusUpdate(ws);
+
+    // Handle browser client disconnect
+    ws.on('close', () => {
+        sourceStatsClients.delete(ws);
+        console.log(`[SOURCE-STATS] Client disconnected: ${clientId} (total: ${sourceStatsClients.size})`);
+    });
+
+    ws.on('error', (error) => {
+        console.error(`[SOURCE-STATS] Client error: ${clientId}:`, error.message);
+        sourceStatsClients.delete(ws);
     });
 });
 
@@ -134,6 +175,51 @@ function broadcastToBrowsers(message) {
     // Only log if there are clients and failures
     if (failCount > 0) {
         console.log(`[BROADCAST] Sent to ${successCount}/${browserClients.size} clients (${failCount} failed)`);
+    }
+}
+
+// Send status update to source stats client(s)
+function sendSourceStatsStatusUpdate(client = null) {
+    const statusMessage = JSON.stringify({
+        type: 'status',
+        esp32Connected: esp32SourceStatsConnected,
+        esp32Ip: config.esp32.ip,
+        timestamp: Date.now()
+    });
+
+    if (client) {
+        // Send to specific client
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(statusMessage);
+        }
+    } else {
+        // Broadcast to all source stats clients
+        broadcastToSourceStatsClients(statusMessage);
+    }
+}
+
+// Broadcast message to all connected source stats browser clients
+function broadcastToSourceStatsClients(message) {
+    let successCount = 0;
+    let failCount = 0;
+
+    sourceStatsClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            try {
+                client.send(message);
+                successCount++;
+            } catch (error) {
+                console.error('[SOURCE-STATS] Failed to send to client:', error.message);
+                failCount++;
+            }
+        } else {
+            failCount++;
+        }
+    });
+
+    // Only log if there are clients and failures
+    if (failCount > 0) {
+        console.log(`[SOURCE-STATS] Sent to ${successCount}/${sourceStatsClients.size} clients (${failCount} failed)`);
     }
 }
 
@@ -206,22 +292,101 @@ function scheduleReconnect() {
     }, config.server.reconnectInterval);
 }
 
+// Connect to ESP32 Source Stats WebSocket
+function connectToESP32SourceStats() {
+    if (esp32SourceStatsClient) {
+        // Close existing connection
+        esp32SourceStatsClient.terminate();
+        esp32SourceStatsClient = null;
+    }
+
+    const sourceStatsPath = config.esp32.sourceStatsPath || '/source-stats';
+    const esp32Url = `ws://${config.esp32.ip}:${config.esp32.port}${sourceStatsPath}`;
+    console.log(`[SOURCE-STATS] Connecting to ${esp32Url}...`);
+
+    try {
+        esp32SourceStatsClient = new WebSocket(esp32Url, {
+            handshakeTimeout: 5000,
+            perMessageDeflate: false
+        });
+
+        esp32SourceStatsClient.on('open', () => {
+            esp32SourceStatsConnected = true;
+            console.log(`[SOURCE-STATS] ✓ Connected to ${config.esp32.ip}`);
+
+            // Notify all browser clients
+            sendSourceStatsStatusUpdate();
+        });
+
+        esp32SourceStatsClient.on('message', (data) => {
+            lastSourceStatsMessageTime = Date.now();
+
+            // Relay message to all browser clients
+            broadcastToSourceStatsClients(data.toString());
+        });
+
+        esp32SourceStatsClient.on('close', () => {
+            esp32SourceStatsConnected = false;
+            console.log('[SOURCE-STATS] ✗ Connection closed');
+
+            // Notify browser clients
+            sendSourceStatsStatusUpdate();
+
+            // Schedule reconnect
+            scheduleSourceStatsReconnect();
+        });
+
+        esp32SourceStatsClient.on('error', (error) => {
+            console.error('[SOURCE-STATS] Connection error:', error.message);
+            esp32SourceStatsConnected = false;
+
+            // Don't schedule reconnect here - let 'close' event handle it
+        });
+
+    } catch (error) {
+        console.error('[SOURCE-STATS] Failed to create WebSocket:', error.message);
+        scheduleSourceStatsReconnect();
+    }
+}
+
+// Schedule source stats reconnection attempt
+function scheduleSourceStatsReconnect() {
+    if (reconnectSourceStatsTimer) {
+        clearTimeout(reconnectSourceStatsTimer);
+    }
+
+    console.log(`[SOURCE-STATS] Reconnecting in ${config.server.reconnectInterval / 1000} seconds...`);
+
+    reconnectSourceStatsTimer = setTimeout(() => {
+        connectToESP32SourceStats();
+    }, config.server.reconnectInterval);
+}
+
 // Graceful shutdown
 function shutdown() {
     console.log('\n[SERVER] Shutting down gracefully...');
 
-    // Clear reconnect timer
+    // Clear reconnect timers
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
     }
+    if (reconnectSourceStatsTimer) {
+        clearTimeout(reconnectSourceStatsTimer);
+    }
 
-    // Close ESP32 connection
+    // Close ESP32 connections
     if (esp32Client) {
         esp32Client.close();
+    }
+    if (esp32SourceStatsClient) {
+        esp32SourceStatsClient.close();
     }
 
     // Close all browser connections
     browserClients.forEach((client) => {
+        client.close(1000, 'Server shutting down');
+    });
+    sourceStatsClients.forEach((client) => {
         client.close(1000, 'Server shutting down');
     });
 
@@ -248,12 +413,17 @@ server.listen(config.server.port, () => {
     console.log('│   BoatData WebSocket Proxy Server              │');
     console.log('└─────────────────────────────────────────────────┘');
     console.log(`\n[SERVER] HTTP server listening on port ${config.server.port}`);
-    console.log(`[SERVER] Dashboard: http://localhost:${config.server.port}/stream.html`);
-    console.log(`[SERVER] WebSocket: ws://localhost:${config.server.port}/boatdata`);
-    console.log(`[ESP32]  Target: ${config.esp32.ip}:${config.esp32.port}${config.esp32.wsPath}\n`);
+    console.log(`[SERVER] BoatData Dashboard: http://localhost:${config.server.port}/stream.html`);
+    console.log(`[SERVER] Source Stats Dashboard: http://localhost:${config.server.port}/sources.html`);
+    console.log(`[SERVER] WebSocket /boatdata: ws://localhost:${config.server.port}/boatdata`);
+    console.log(`[SERVER] WebSocket /source-stats: ws://localhost:${config.server.port}/source-stats`);
+    console.log(`[ESP32]  Target: ${config.esp32.ip}:${config.esp32.port}`);
+    console.log(`[ESP32]  - BoatData: ${config.esp32.wsPath}`);
+    console.log(`[ESP32]  - Source Stats: ${config.esp32.sourceStatsPath || '/source-stats'}\n`);
 
-    // Connect to ESP32
+    // Connect to ESP32 endpoints
     connectToESP32();
+    connectToESP32SourceStats();
 });
 
 // Handle server errors

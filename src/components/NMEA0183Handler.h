@@ -5,6 +5,7 @@
 #include "hal/interfaces/ISerialPort.h"
 #include "components/BoatData.h"
 #include "utils/WebSocketLogger.h"
+#include "components/SourceRegistry.h"
 
 /**
  * @file NMEA0183Handler.h
@@ -43,9 +44,10 @@ public:
      * @param serialPort Serial port interface (ISerialPort wrapper for Serial2)
      * @param boatData BoatData repository (for sensor updates via ISensorUpdate)
      * @param logger WebSocket logger (for network debugging)
+     * @param registry SourceRegistry for tracking source statistics
      */
     NMEA0183Handler(tNMEA0183* nmea0183, ISerialPort* serialPort,
-                    BoatData* boatData, WebSocketLogger* logger);
+                    BoatData* boatData, WebSocketLogger* logger, SourceRegistry* registry = nullptr);
 
     /**
      * @brief Initialize Serial2 and NMEA parser
@@ -81,6 +83,7 @@ private:
     ISerialPort* serialPort_;       ///< Serial port interface
     BoatData* boatData_;            ///< BoatData repository
     WebSocketLogger* logger_;       ///< WebSocket logger
+    SourceRegistry* registry_;      ///< Source statistics registry
 
     /**
      * @brief Handler dispatch table entry

@@ -42,6 +42,9 @@
 #include "components/NMEA0183Handler.h"
 #include "components/OneWireSensorPoller.h"
 #include "components/BoatDataSerializer.h"
+#include "components/SourceRegistry.h"
+#include "components/SourceStatsHandler.h"
+#include "components/SourceStatsSerializer.h"
 
 // Utilities
 #include "utils/WebSocketLogger.h"
@@ -103,6 +106,11 @@ tNMEA2000* nmea2000 = nullptr;
 
 // WebUI components (Feature 011-simple-webui-as)
 AsyncWebSocket wsBoatData("/boatdata");
+
+// Source Statistics components (Feature 012-sources-stats-and)
+SourceRegistry sourceRegistry;
+AsyncWebSocket wsSourceStats("/source-stats");
+SourceStatsHandler* sourceStatsHandler = nullptr;
 
 // Reboot management
 bool rebootScheduled = false;
@@ -193,6 +201,13 @@ void onWiFiConnected() {
         // Setup /boatdata WebSocket endpoint (Feature 011: US1)
         setupBoatDataWebSocket(webServer->getServer());
 
+        // Setup /source-stats WebSocket endpoint (Feature 012: US1)
+        sourceStatsHandler = new SourceStatsHandler(&wsSourceStats, &sourceRegistry, &logger);
+        sourceStatsHandler->begin();
+        webServer->getServer()->addHandler(&wsSourceStats);
+        logger.broadcastLog(LogLevel::INFO, "SourceStatsHandler", "ENDPOINT_REGISTERED",
+                            F("{\"path\":\"/source-stats\"}"));
+
         // Setup /stream HTTP endpoint for HTML dashboard (Feature 011: US2)
         webServer->getServer()->on("/stream", HTTP_GET, [](AsyncWebServerRequest *request) {
             if (!LittleFS.exists("/stream.html")) {
@@ -207,6 +222,22 @@ void onWiFiConnected() {
             String clientIP = request->client()->remoteIP().toString();
             logger.broadcastLog(LogLevel::DEBUG, "HTTPFileServer", "FILE_SERVED",
                 String(F("{\"path\":\"/stream.html\",\"clientIP\":\"")) + clientIP + F("\"}"));
+        });
+
+        // Setup /sources HTTP endpoint for source statistics dashboard (Feature 012: US2)
+        webServer->getServer()->on("/sources", HTTP_GET, [](AsyncWebServerRequest *request) {
+            if (!LittleFS.exists("/sources.html")) {
+                logger.broadcastLog(LogLevel::ERROR, "HTTPFileServer", "FILE_NOT_FOUND",
+                    F("{\"path\":\"/sources.html\"}"));
+                request->send(404, "text/plain", "Source statistics dashboard not found in LittleFS");
+                return;
+            }
+
+            request->send(LittleFS, "/sources.html", "text/html");
+
+            String clientIP = request->client()->remoteIP().toString();
+            logger.broadcastLog(LogLevel::DEBUG, "HTTPFileServer", "FILE_SERVED",
+                String(F("{\"path\":\"/sources.html\",\"clientIP\":\"")) + clientIP + F("\"}"));
         });
 
         // Register log filter configuration endpoint
@@ -253,6 +284,26 @@ void onWiFiConnected() {
         // Register GET endpoint to query current filter
         webServer->getServer()->on("/log-filter", HTTP_GET, [](AsyncWebServerRequest *request) {
             request->send(200, "application/json", logger.getFilterConfig());
+        });
+
+        // Register memory diagnostics endpoint (Feature 012: T036)
+        webServer->getServer()->on("/diagnostics", HTTP_GET, [](AsyncWebServerRequest *request) {
+            uint32_t freeHeap = ESP.getFreeHeap();
+            uint32_t totalHeap = ESP.getHeapSize();
+            uint32_t usedHeap = totalHeap - freeHeap;
+            uint8_t sourcesCount = sourceRegistry.getTotalSourceCount();
+
+            String response = String(F("{\"memory\":{\"freeHeap\":")) + freeHeap +
+                            F(",\"usedHeap\":") + usedHeap +
+                            F(",\"totalHeap\":") + totalHeap +
+                            F("},\"sources\":{\"count\":") + sourcesCount +
+                            F(",\"max\":") + MAX_SOURCES +
+                            F("}}");
+
+            request->send(200, "application/json", response);
+
+            logger.broadcastLog(LogLevel::DEBUG, "HTTPDiagnostics", "REQUEST",
+                String(F("{\"freeHeap\":")) + freeHeap + F(",\"sources\":") + sourcesCount + F("}"));
         });
 
         logger.broadcastLog(LogLevel::INFO, "WebServer", "STARTED",
@@ -539,12 +590,16 @@ void setup() {
         // Graceful degradation: Continue operation without display (FR-027)
     }
 
+    // Feature 012: Initialize source statistics tracking (MUST be before any handler creation)
+    Serial.println(F("Initializing source statistics tracking..."));
+    sourceRegistry.init(&logger);
+
     // T036: NMEA0183 Handler initialization (after display, before ReactESP loops)
     Serial.println(F("Initializing NMEA0183 handler..."));
     // Initialize Serial2 with explicit GPIO pins: RX=25, TX=27 (SH-ESP32 board)
     serial0183 = new ESP32SerialPort(&Serial2, 25, 27);
     nmea0183 = new tNMEA0183();
-    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger);
+    nmea0183Handler = new NMEA0183Handler(nmea0183, serial0183, boatData, &logger, &sourceRegistry);
 
     // Initialize Serial2 at 38400 baud for NMEA 0183
     nmea0183Handler->init();
@@ -611,20 +666,17 @@ void setup() {
     nmea2000->EnableForward(false);
 
     // Open CAN bus
-    if (nmea2000->Open()) {
-        Serial.println(F("NMEA2000 CAN bus initialized successfully"));
-        logger.broadcastLog(LogLevel::INFO, "NMEA2000", "INIT_SUCCESS",
-                            F("{\"can_tx\":32,\"can_rx\":34,\"baud\":250000}"));
-    } else {
-        Serial.println(F("WARNING: NMEA2000 CAN bus initialization failed"));
-        logger.broadcastLog(LogLevel::ERROR, "NMEA2000", "INIT_FAILED",
-                            F("{\"reason\":\"CAN bus open failed - check wiring and terminators\"}"));
-        // Graceful degradation: Continue operation without NMEA2000
-    }
+    // Note: Open() return value is unreliable in NMEA2000 library (known bug)
+    // Address claiming happens asynchronously via ParseMessages()
+    // See: https://ttlappalainen.github.io/NMEA2000/changes.html
+    nmea2000->Open();
+    Serial.println(F("NMEA2000 CAN bus initialized"));
+    logger.broadcastLog(LogLevel::INFO, "NMEA2000", "INIT_STARTED",
+                        F("{\"can_tx\":32,\"can_rx\":34,\"baud\":250000}"));
 
     // T029: Register NMEA2000 message handlers
     if (nmea2000 != nullptr) {
-        RegisterN2kHandlers(nmea2000, boatData, &logger);
+        RegisterN2kHandlers(nmea2000, boatData, &logger, &sourceRegistry);
         Serial.println(F("NMEA2000 handlers registered - processing 13 PGNs"));
     }
 
@@ -715,6 +767,25 @@ void setup() {
 
     logger.broadcastLog(LogLevel::INFO, "BoatDataStream", "BROADCAST_TIMER_STARTED",
                         "{\"interval_ms\":1000,\"frequency_hz\":1}");
+
+    // Feature 012: Source statistics update loops
+    // T018: Update staleness flags and send delta updates every 500ms
+    app.onRepeat(500, [&]() {
+        sourceRegistry.updateStaleFlags();
+
+        if (sourceRegistry.hasChanges() && sourceStatsHandler != nullptr) {
+            sourceStatsHandler->sendDeltaUpdate();
+            sourceRegistry.clearChangeFlag();
+        }
+    });
+
+    // T018: Garbage collect stale sources every 60 seconds
+    app.onRepeat(60000, [&]() {
+        sourceRegistry.garbageCollect();
+    });
+
+    logger.broadcastLog(LogLevel::INFO, "SourceStatsHandler", "TIMERS_STARTED",
+                        F("{\"staleness_update_ms\":500,\"gc_interval_ms\":60000}"));
 
     // T028: Display refresh loops - 1s animation, 5s status
     app.onRepeat(DISPLAY_ANIMATION_INTERVAL_MS, []() {

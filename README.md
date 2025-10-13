@@ -485,6 +485,218 @@ pio test -e esp32dev_test -f test_webui_hardware
 5. Check 1 Hz updates (watch timestamps)
 6. Test disconnect/reconnect (watch auto-reconnect)
 
+## Source Statistics Tracking
+
+### Overview
+Real-time tracking and visualization of NMEA 2000/0183 message sources for system diagnostics and topology understanding. The feature provides:
+
+- **Source discovery**: Automatic detection by SID (NMEA2000) or talker ID (NMEA0183)
+- **Frequency tracking**: Rolling 10-sample average for update rate calculation (Hz)
+- **Staleness monitoring**: 5-second threshold for detecting inactive sources
+- **Garbage collection**: Automatic removal of sources stale >5 minutes
+- **WebSocket streaming**: Full snapshot + incremental delta updates (500ms batching)
+- **WebUI dashboard**: Real-time visualization organized by BoatData categories
+- **Node.js proxy**: Multi-client support via WebSocket relay
+
+**Memory**: ~5.3KB static allocation for 50 sources maximum
+
+### Access Source Statistics Dashboard
+
+**Direct from ESP32**:
+```
+http://<ESP32_IP>:3030/sources
+```
+
+Example: `http://192.168.10.3:3030/sources`
+
+**Via Node.js Proxy** (recommended for multiple clients):
+```bash
+cd nodejs-boatdata-viewer
+npm install      # First time only
+npm start        # Starts proxy on localhost:3030
+
+# Access dashboard
+http://localhost:3030/sources.html
+```
+
+### Dashboard Features
+
+#### Organized by BoatData Category
+- **GPS**: PGN129025, PGN129026, PGN129029, PGN127258, GGA, RMC, VTG
+- **Compass**: PGN127250, PGN127251, PGN127252, PGN127257, HDM
+- **Wind**: PGN130306
+- **DST**: PGN128267, PGN128259, PGN130316
+- **Rudder**: RSA
+- **Engine**: PGN127488, PGN127489
+
+#### Per-Source Information
+- **Source ID**: Format "NMEA2000-<SID>" or "NMEA0183-<TalkerID>"
+- **Update Frequency**: Hz (calculated from 10-sample rolling average)
+- **Time Since Last Update**: Milliseconds
+- **Staleness Indicator**: 🟢 Green (active) or 🔴 Red (>5 seconds stale)
+
+#### Real-Time Updates
+- **Update rate**: 500ms (2 Hz delta updates)
+- **Frequency accuracy**: ±10% tolerance
+- **Staleness detection**: <5.5 seconds
+- **Connection status**: Visual WebSocket connection indicator
+
+### WebSocket API
+
+**Endpoint**: `ws://<ESP32_IP>:3030/source-stats`
+
+**Message Types**:
+
+1. **Full Snapshot** (on connect):
+```json
+{
+  "event": "fullSnapshot",
+  "version": 1,
+  "timestamp": 123456789,
+  "sources": {
+    "GPS": {
+      "PGN129025": [
+        {
+          "sourceId": "NMEA2000-42",
+          "protocol": "NMEA2000",
+          "frequency": 10.1,
+          "timeSinceLast": 98,
+          "isStale": false
+        }
+      ]
+    }
+  }
+}
+```
+
+2. **Delta Update** (every 500ms):
+```json
+{
+  "event": "deltaUpdate",
+  "timestamp": 123457289,
+  "changes": [
+    {
+      "sourceId": "NMEA2000-42",
+      "frequency": 10.2,
+      "timeSinceLast": 102,
+      "isStale": false
+    }
+  ]
+}
+```
+
+3. **Source Removed** (on GC):
+```json
+{
+  "event": "sourceRemoved",
+  "sourceId": "NMEA2000-42",
+  "timestamp": 123456789,
+  "reason": "stale"
+}
+```
+
+### Memory Diagnostics Endpoint
+
+Query current memory usage and source count:
+
+```bash
+curl http://<ESP32_IP>/diagnostics
+```
+
+**Response**:
+```json
+{
+  "memory": {
+    "freeHeap": 240000,
+    "usedHeap": 80000,
+    "totalHeap": 320000
+  },
+  "sources": {
+    "count": 12,
+    "max": 50
+  }
+}
+```
+
+### Node.js Proxy Support
+
+The Node.js proxy relays source statistics to multiple clients:
+
+**Setup**:
+1. Configure ESP32 IP in `nodejs-boatdata-viewer/config.json`:
+```json
+{
+  "esp32": {
+    "host": "192.168.1.100",
+    "port": 3030
+  },
+  "server": {
+    "port": 3000
+  },
+  "boatDataPath": "/boatdata",
+  "sourceStatsPath": "/source-stats"
+}
+```
+
+2. Access proxy dashboard: `http://localhost:3000/sources.html`
+
+**Benefits**:
+- Supports 10+ concurrent browser clients
+- Auto-reconnects to ESP32 on disconnect
+- No ESP32 resource impact (single connection from proxy)
+
+### Performance
+
+- **Memory footprint**: <10KB RAM for 50 sources
+- **JSON payload**: <5KB (full snapshot, 30 sources)
+- **WebSocket batching**: 500ms ±50ms
+- **Frequency accuracy**: ±10%
+- **Staleness detection**: <5.5 seconds
+- **Visual update latency**: <200ms
+
+### Troubleshooting
+
+**Dashboard not loading**:
+1. Verify ESP32 connected: `curl http://<ESP32_IP>/wifi-status`
+2. Upload dashboard: `pio run --target uploadfs`
+3. Check LittleFS mounted: Monitor for "FILESYSTEM_MOUNTED" logs
+4. Test HTTP endpoint: `curl http://<ESP32_IP>:3030/sources`
+
+**No sources appearing**:
+1. Verify NMEA devices connected (check physical connections)
+2. Monitor source registry logs: `python3 src/helpers/ws_logger.py <ESP32_IP> --filter SourceRegistry`
+3. Check NMEA handler initialization: Look for "NMEA2000" and "NMEA0183" init logs
+4. Verify recordUpdate() calls in handlers (should see SOURCE_DISCOVERED events)
+
+**Frequency shows 0.0 Hz**:
+1. Wait for 10 samples to collect (1 second at 10 Hz)
+2. Check buffer full flag: bufferFull should be true
+3. Verify messages arriving regularly (not intermittent)
+
+**Staleness not updating**:
+1. Verify updateStaleFlags() timer running (500ms ReactESP loop)
+2. Check WebSocket delta updates being sent
+3. Monitor for hasChanges() flag (should trigger updates)
+
+### Testing
+
+```bash
+# All source statistics tests
+pio test -e native -f test_source_stats_*
+
+# Specific test groups
+pio test -e native -f test_source_stats_units        # Unit tests (FrequencyCalculator, etc.)
+pio test -e native -f test_source_stats_contracts    # Contract tests (SourceRegistry invariants)
+pio test -e native -f test_source_stats_integration  # Integration tests (end-to-end)
+
+# Build and upload
+pio run
+pio run --target upload
+pio run --target uploadfs
+```
+
+**Validation Guide**: See `specs/012-sources-stats-and/quickstart.md` for detailed validation scenarios with real NMEA devices.
+
 ## Development
 
 ### Project Structure
@@ -525,13 +737,18 @@ Poseidon2/
 │   │   ├── DisplayManager.cpp/h         # OLED display orchestration
 │   │   ├── MetricsCollector.cpp/h       # System metrics collection
 │   │   ├── DisplayFormatter.h           # Display string formatting
-│   │   └── StartupProgressTracker.cpp/h # Subsystem initialization tracking
+│   │   ├── StartupProgressTracker.cpp/h # Subsystem initialization tracking
+│   │   ├── SourceRegistry.cpp/h         # NMEA source statistics registry
+│   │   ├── SourceStatistics.h           # Source statistics data structures
+│   │   ├── SourceStatsSerializer.cpp/h  # JSON serialization for source stats
+│   │   └── SourceStatsHandler.cpp/h     # WebSocket handler for source stats
 │   ├── utils/                           # Utility functions
 │   │   ├── WebSocketLogger.cpp/h        # WebSocket-based logging
 │   │   ├── TimeoutManager.cpp/h         # ReactESP timeout tracking
 │   │   ├── DataValidator.h              # Marine data validation
 │   │   ├── AngleUtils.h                 # Angle normalization utilities
 │   │   ├── DisplayLayout.h              # OLED display layout utilities
+│   │   ├── FrequencyCalculator.cpp/h    # Frequency calculation utility
 │   │   └── LogEnums.h                   # Logging enumerations
 │   ├── types/                           # Type definitions
 │   │   ├── BoatDataTypes.h              # Marine data structures
@@ -564,9 +781,13 @@ Poseidon2/
 │   ├── test_oled_contracts/             # OLED HAL contract tests (native)
 │   ├── test_oled_integration/           # OLED integration tests (native)
 │   ├── test_oled_units/                 # OLED unit tests (native)
-│   └── test_oled_hardware/              # OLED hardware tests (ESP32)
+│   ├── test_oled_hardware/              # OLED hardware tests (ESP32)
+│   ├── test_source_stats_units/         # Source statistics unit tests (native)
+│   ├── test_source_stats_contracts/     # Source statistics contract tests (native)
+│   └── test_source_stats_integration/   # Source statistics integration tests (native)
 ├── data/                                # LittleFS filesystem files
 │   ├── stream.html                      # WebUI dashboard (served from ESP32)
+│   ├── sources.html                     # Source statistics dashboard (served from ESP32)
 │   ├── calibration.json                 # Default calibration parameters
 │   └── log-filter.json                  # WebSocket logging filter config
 ├── nodejs-boatdata-viewer/              # Node.js WebSocket proxy server
@@ -574,7 +795,8 @@ Poseidon2/
 │   ├── config.json                      # ESP32 IP/port configuration
 │   ├── package.json                     # Node.js dependencies
 │   ├── public/
-│   │   └── stream.html                  # Dashboard (identical to ESP32 version)
+│   │   ├── stream.html                  # BoatData dashboard (identical to ESP32 version)
+│   │   └── sources.html                 # Source statistics dashboard (identical to ESP32 version)
 │   └── README.md                        # Proxy server documentation
 ├── examples/poseidongw/                 # Reference implementation
 ├── specs/                               # Feature specifications
@@ -584,7 +806,8 @@ Poseidon2/
 │   ├── 004-removal-of-udp/              # UDP removal documentation
 │   ├── 005-oled-basic-info/             # OLED display feature spec
 │   ├── 008-enhanced-boatdata-following/ # Enhanced BoatData spec (R005)
-│   └── 011-simple-webui-as/             # WebUI dashboard spec (R009)
+│   ├── 011-simple-webui-as/             # WebUI dashboard spec (R009)
+│   └── 012-sources-stats-and/           # Source statistics tracking spec (R010)
 ├── user_requirements/                   # User requirements
 │   ├── R001 - foundation.md             # Core requirements
 │   ├── R002 - boatdata.md               # BoatData requirements
@@ -592,7 +815,8 @@ Poseidon2/
 │   ├── R004 - OLED basic info.md        # OLED display requirements
 │   ├── R005 - enhanced boatdata.md      # Enhanced BoatData requirements
 │   ├── R007 - NMEA 0183 data.md         # NMEA 0183 handlers
-│   └── R009 - webui.md                  # WebUI dashboard requirements
+│   ├── R009 - webui.md                  # WebUI dashboard requirements
+│   └── R010 - source statistics.md      # Source statistics tracking requirements
 ├── .specify/                            # Development framework
 │   ├── memory/
 │   │   └── constitution.md              # Development principles (v1.2.0)
@@ -687,6 +911,74 @@ python3 src/helpers/ws_logger.py <ESP32_IP> --reconnect
 {"timestamp":1234567890,"level":"INFO","component":"WiFiManager","event":"CONNECTION_ATTEMPT","data":{"ssid":"HomeNetwork","attempt":1,"timeout_seconds":30}}
 {"timestamp":1234567895,"level":"INFO","component":"WiFiManager","event":"CONNECTION_SUCCESS","data":{"ssid":"HomeNetwork","ip":"192.168.1.100"}}
 ```
+
+## More logging 
+
+### WebSocket Log Filtering
+
+To prevent queue overflow and reduce message volume, configure runtime log filters via HTTP endpoint:
+
+**Configure filter (applies to all WebSocket clients)**:
+```bash
+# Set DEBUG level for NMEA2000 component only
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000"
+
+# Filter by event prefix (all PGN130306 events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&events=PGN130306_"
+
+# Multiple components (comma-separated)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=NMEA2000,GPS,OneWire"
+
+# Multiple event prefixes
+curl -X POST "http://<ESP32_IP>/log-filter?level=WARN&events=ERROR,FAILED,OUT_OF_RANGE"
+
+# Combine filters (AND logic)
+curl -X POST "http://<ESP32_IP>/log-filter?level=DEBUG&components=NMEA2000&events=PGN130306_"
+
+# Reset to defaults (INFO level, all components/events)
+curl -X POST "http://<ESP32_IP>/log-filter?level=INFO&components=&events="
+```
+
+**Query current filter**:
+```bash
+# GET request returns current filter configuration
+curl -X GET "http://<ESP32_IP>/log-filter"
+# Response: {"level":"DEBUG","components":"NMEA2000","events":"PGN130306_"}
+```
+
+**Filter behavior**:
+- **Single shared filter**: Applies to all connected WebSocket clients
+- **Default filter**: INFO level, all components, all events
+- **Empty parameter**: Matches all (e.g., `components=` matches all components)
+- **Level filtering**: Messages below minimum level are dropped
+- **Component filtering**: Exact substring match in comma-separated list
+- **Event filtering**: Prefix match (e.g., `PGN130306_` matches `PGN130306_UPDATE`, `PGN130306_OUT_OF_RANGE`)
+- **AND logic**: Message must match level AND component AND event filters
+- **Early exit**: Filtered messages never built or queued (reduces CPU/memory usage)
+- **Automatic persistence**: Filter settings automatically saved to `/log-filter.json` on every change
+- **Persists across reboots**: Filter configuration loaded from LittleFS on startup
+
+**Common filter examples**:
+```bash
+# Monitor high-frequency NMEA2000 updates only
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&components=NMEA2000"
+
+# Show only errors and warnings from all components
+curl -X POST "http://192.168.1.100/log-filter?level=WARN"
+
+# Debug specific PGN (Wind Data)
+curl -X POST "http://192.168.1.100/log-filter?level=DEBUG&events=PGN130306_"
+
+# Monitor WiFi and WebServer events
+curl -X POST "http://192.168.1.100/log-filter?level=INFO&components=WiFi,WebServer"
+
+# Production mode (errors only)
+curl -X POST "http://192.168.1.100/log-filter?level=ERROR"
+```
+
+**Memory footprint**:
+- **RAM**: 256 bytes (single LogFilter struct, static allocation)
+- **Flash**: ~2KB code, `/log-filter.json` file (~100 bytes)
 
 ## Troubleshooting
 
@@ -793,7 +1085,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ BoatData | ✅ Enhanced BoatData (R005) | ✅ NMEA 0183 | ✅ WebUI Dashboard (R009) | 🚧 NMEA 2000 In Progress
+**Status**: ✅ WiFi Management | ✅ OLED Display | ✅ Loop Frequency Monitoring | ✅ BoatData | ✅ Enhanced BoatData (R005) | ✅ NMEA 0183 | ✅ WebUI Dashboard (R009) | ✅ Source Statistics (R010) | 🚧 NMEA 2000 In Progress
 
 **Last Updated**: 2025-10-13
-**Version**: 1.2.0 (WiFi Management + OLED Display + WebUI Dashboard)
+**Version**: 1.3.0 (WiFi Management + OLED Display + WebUI Dashboard + Source Statistics)
