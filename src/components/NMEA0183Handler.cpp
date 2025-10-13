@@ -164,6 +164,11 @@ void NMEA0183Handler::handleRSA(const tNMEA0183Msg& msg) {
     // Update BoatData
     bool accepted = boatData_->updateRudder(angleRadians, "NMEA0183-AP");
 
+    // Record source update in registry
+    if (registry_ != nullptr) {
+        registry_->recordUpdate(CategoryType::RUDDER, "RSA", "NMEA0183-AP", ProtocolType::NMEA0183);
+    }
+
     // Log if accepted (DEBUG level for valid sentences)
     if (accepted) {
         String logData = String("{\"type\":\"RSA\",\"source\":\"NMEA0183-AP\",\"value\":") +
@@ -199,6 +204,11 @@ void NMEA0183Handler::handleHDM(const tNMEA0183Msg& msg) {
 
     // Update BoatData (trueHdg=0.0 not updated by HDM, variation=0.0 not updated)
     bool accepted = boatData_->updateCompass(0.0, headingRadians, 0.0, "NMEA0183-AP");
+
+    // Record source update in registry
+    if (registry_ != nullptr) {
+        registry_->recordUpdate(CategoryType::COMPASS, "HDM", "NMEA0183-AP", ProtocolType::NMEA0183);
+    }
 
     // Log if accepted
     if (accepted) {
@@ -244,6 +254,11 @@ void NMEA0183Handler::handleGGA(const tNMEA0183Msg& msg) {
 
     // Update BoatData (COG/SOG not in GGA, set to 0.0)
     bool accepted = boatData_->updateGPS(Latitude, Longitude, 0.0, 0.0, "NMEA0183-VH");
+
+    // Record source update in registry
+    if (registry_ != nullptr) {
+        registry_->recordUpdate(CategoryType::GPS, "GGA", "NMEA0183-VH", ProtocolType::NMEA0183);
+    }
 
     // Log if accepted
     if (accepted) {
@@ -300,6 +315,11 @@ void NMEA0183Handler::handleRMC(const tNMEA0183Msg& msg) {
     // Update compass variation
     bool compassAccepted = boatData_->updateCompass(0.0, 0.0, variationRadians, "NMEA0183-VH");
 
+    // Record source update in registry
+    if (registry_ != nullptr) {
+        registry_->recordUpdate(CategoryType::GPS, "RMC", "NMEA0183-VH", ProtocolType::NMEA0183);
+    }
+
     // Log if accepted
     if (gpsAccepted || compassAccepted) {
         String logData = String("{\"type\":\"RMC\",\"source\":\"NMEA0183-VH\",\"lat\":") +
@@ -349,6 +369,11 @@ void NMEA0183Handler::handleVTG(const tNMEA0183Msg& msg) {
 
     // Update compass variation
     bool compassAccepted = boatData_->updateCompass(0.0, 0.0, variationRadians, "NMEA0183-VH");
+
+    // Record source update in registry
+    if (registry_ != nullptr) {
+        registry_->recordUpdate(CategoryType::GPS, "VTG", "NMEA0183-VH", ProtocolType::NMEA0183);
+    }
 
     // Log if accepted
     if (gpsAccepted || compassAccepted) {

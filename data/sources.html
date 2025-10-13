@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Source Statistics - Poseidon2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0a0e27;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background-color: #1a1f3a;
+            border-radius: 8px;
+            border: 2px solid #2a3f5f;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #f44336;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background-color: #4caf50;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background-color: #1a1f3a;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid #2a3f5f;
+        }
+
+        .summary-card h3 {
+            font-size: 0.85rem;
+            color: #9e9e9e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .summary-card .value {
+            font-size: 2rem;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+
+        .category-section {
+            margin-bottom: 30px;
+            background-color: #1a1f3a;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #2a3f5f;
+        }
+
+        .category-header {
+            background-color: #2a3f5f;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .category-header:hover {
+            background-color: #3a4f6f;
+        }
+
+        .category-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+
+        .category-badge {
+            background-color: #4fc3f7;
+            color: #0a0e27;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .category-content {
+            display: none;
+        }
+
+        .category-content.active {
+            display: block;
+        }
+
+        .sources-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sources-table thead {
+            background-color: #0f1729;
+        }
+
+        .sources-table th {
+            text-align: left;
+            padding: 15px 20px;
+            font-size: 0.85rem;
+            color: #9e9e9e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .sources-table tbody tr {
+            border-bottom: 1px solid #2a3f5f;
+            transition: background-color 0.2s;
+        }
+
+        .sources-table tbody tr:hover {
+            background-color: #1f2640;
+        }
+
+        .sources-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .sources-table td {
+            padding: 15px 20px;
+            font-size: 0.95rem;
+        }
+
+        .source-id {
+            font-family: 'Courier New', monospace;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .message-type {
+            color: #9e9e9e;
+            font-family: 'Courier New', monospace;
+        }
+
+        .protocol-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .protocol-nmea2000 {
+            background-color: rgba(76, 175, 80, 0.2);
+            color: #81c784;
+            border: 1px solid #81c784;
+        }
+
+        .protocol-nmea0183 {
+            background-color: rgba(33, 150, 243, 0.2);
+            color: #64b5f6;
+            border: 1px solid #64b5f6;
+        }
+
+        .frequency {
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+
+        .time-since {
+            color: #9e9e9e;
+        }
+
+        .staleness-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .staleness-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .staleness-dot.fresh {
+            background-color: #4caf50;
+            color: #4caf50;
+        }
+
+        .staleness-dot.stale {
+            background-color: #f44336;
+            color: #f44336;
+            animation: pulse 2s infinite;
+        }
+
+        .staleness-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .staleness-text.fresh {
+            color: #4caf50;
+        }
+
+        .staleness-text.stale {
+            color: #f44336;
+        }
+
+        .empty-state {
+            padding: 60px 20px;
+            text-align: center;
+            color: #9e9e9e;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 1.1rem;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .sources-table {
+                font-size: 0.85rem;
+            }
+
+            .sources-table th,
+            .sources-table td {
+                padding: 10px;
+            }
+
+            /* Stack table on mobile */
+            .sources-table thead {
+                display: none;
+            }
+
+            .sources-table tbody tr {
+                display: flex;
+                flex-direction: column;
+                padding: 15px;
+                border: 1px solid #2a3f5f;
+                border-radius: 8px;
+                margin-bottom: 10px;
+            }
+
+            .sources-table tbody tr td {
+                padding: 5px 0;
+                border: none;
+            }
+
+            .sources-table tbody tr td:before {
+                content: attr(data-label);
+                font-weight: 600;
+                color: #9e9e9e;
+                display: inline-block;
+                width: 120px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .summary {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading animation */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9e9e9e;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #2a3f5f;
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Source Statistics</h1>
+            <div class="connection-status">
+                <div class="status-indicator" id="connectionIndicator"></div>
+                <span class="status-text" id="connectionText">Connecting...</span>
+            </div>
+        </header>
+
+        <div class="summary">
+            <div class="summary-card">
+                <h3>Total Sources</h3>
+                <div class="value" id="totalSources">0</div>
+            </div>
+            <div class="summary-card">
+                <h3>Active Sources</h3>
+                <div class="value" id="activeSources">0</div>
+            </div>
+            <div class="summary-card">
+                <h3>Stale Sources</h3>
+                <div class="value" id="staleSources">0</div>
+            </div>
+            <div class="summary-card">
+                <h3>Active Categories</h3>
+                <div class="value" id="activeCategories">0</div>
+            </div>
+        </div>
+
+        <div class="loading" id="loadingIndicator">
+            <div class="loading-spinner"></div>
+            <div>Waiting for data...</div>
+        </div>
+
+        <div id="categoriesContainer"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const ESP32_IP = window.location.hostname;
+        const WS_ENDPOINT = `ws://${ESP32_IP}/source-stats`;
+
+        // Global state
+        let ws = null;
+        let sources = {};
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+        const RECONNECT_DELAY = 3000;
+
+        // Category display names
+        const categoryNames = {
+            GPS: 'GPS & Position',
+            COMPASS: 'Compass & Heading',
+            DST: 'Depth, Speed & Trip',
+            WIND: 'Wind',
+            ENGINE: 'Engine',
+            BATTERY: 'Battery',
+            RUDDER: 'Rudder',
+            ONEWIRESENSORS: '1-Wire Sensors',
+            SHOREPOWER: 'Shore Power'
+        };
+
+        // Initialize WebSocket connection
+        function connectWebSocket() {
+            console.log('Connecting to WebSocket:', WS_ENDPOINT);
+            updateConnectionStatus('Connecting...', false);
+
+            ws = new WebSocket(WS_ENDPOINT);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus('Connected', true);
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus('Error', false);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed');
+                updateConnectionStatus('Disconnected', false);
+                attemptReconnect();
+            };
+        }
+
+        // Handle incoming WebSocket messages
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'fullSnapshot':
+                    handleFullSnapshot(message);
+                    break;
+                case 'deltaUpdate':
+                    handleDeltaUpdate(message);
+                    break;
+                case 'sourceRemoved':
+                    handleSourceRemoved(message);
+                    break;
+                default:
+                    console.warn('Unknown message type:', message.type);
+            }
+        }
+
+        // Handle full snapshot message
+        function handleFullSnapshot(message) {
+            console.log('Received full snapshot:', message);
+            sources = {};
+
+            if (message.categories && Array.isArray(message.categories)) {
+                message.categories.forEach(category => {
+                    if (category.messageTypes && Array.isArray(category.messageTypes)) {
+                        category.messageTypes.forEach(messageType => {
+                            if (messageType.sources && Array.isArray(messageType.sources)) {
+                                messageType.sources.forEach(source => {
+                                    const key = `${source.sourceId}`;
+                                    sources[key] = {
+                                        ...source,
+                                        category: category.category,
+                                        messageTypeId: messageType.messageTypeId
+                                    };
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+
+            renderAllSources();
+        }
+
+        // Handle delta update message
+        function handleDeltaUpdate(message) {
+            console.log('Received delta update:', message);
+
+            if (message.updates && Array.isArray(message.updates)) {
+                message.updates.forEach(update => {
+                    const key = `${update.sourceId}`;
+                    if (sources[key]) {
+                        // Update existing source
+                        if (update.frequency !== undefined) sources[key].frequency = update.frequency;
+                        if (update.timeSinceLast !== undefined) sources[key].timeSinceLast = update.timeSinceLast;
+                        if (update.isStale !== undefined) sources[key].isStale = update.isStale;
+
+                        updateSourceRow(sources[key]);
+                    } else {
+                        // New source discovered
+                        sources[key] = update;
+                        renderAllSources();
+                    }
+                });
+            }
+
+            updateSummary();
+        }
+
+        // Handle source removed message
+        function handleSourceRemoved(message) {
+            console.log('Source removed:', message);
+            const key = `${message.sourceId}`;
+            if (sources[key]) {
+                delete sources[key];
+                renderAllSources();
+            }
+        }
+
+        // Render all sources organized by category
+        function renderAllSources() {
+            const container = document.getElementById('categoriesContainer');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+
+            if (Object.keys(sources).length === 0) {
+                loadingIndicator.style.display = 'block';
+                container.innerHTML = '';
+                updateSummary();
+                return;
+            }
+
+            loadingIndicator.style.display = 'none';
+
+            // Group sources by category
+            const categorizedSources = {};
+            Object.values(sources).forEach(source => {
+                const cat = source.category || 'UNKNOWN';
+                if (!categorizedSources[cat]) {
+                    categorizedSources[cat] = [];
+                }
+                categorizedSources[cat].push(source);
+            });
+
+            // Render each category
+            let html = '';
+            Object.keys(categorizedSources).sort().forEach(category => {
+                const categoryDisplayName = categoryNames[category] || category;
+                const categorySources = categorizedSources[category];
+
+                html += `
+                    <div class="category-section">
+                        <div class="category-header" onclick="toggleCategory('${category}')">
+                            <span class="category-title">${categoryDisplayName}</span>
+                            <span class="category-badge">${categorySources.length}</span>
+                        </div>
+                        <div class="category-content active" id="category-${category}">
+                            <table class="sources-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source ID</th>
+                                        <th>Message Type</th>
+                                        <th>Protocol</th>
+                                        <th>Frequency</th>
+                                        <th>Time Since Last</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-${category}">
+                                    ${renderCategorySources(categorySources)}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            updateSummary();
+        }
+
+        // Render sources for a specific category
+        function renderCategorySources(categorySources) {
+            return categorySources.map(source => {
+                const protocolClass = source.protocol === 'NMEA2000' ? 'protocol-nmea2000' : 'protocol-nmea0183';
+                const stalenessClass = source.isStale ? 'stale' : 'fresh';
+                const stalenessText = source.isStale ? 'Stale' : 'Active';
+                const frequencyDisplay = source.frequency > 0 ? `${source.frequency.toFixed(2)} Hz` : '—';
+                const timeSinceDisplay = `${(source.timeSinceLast / 1000).toFixed(1)}s`;
+
+                return `
+                    <tr data-source-id="${source.sourceId}">
+                        <td data-label="Source ID" class="source-id">${source.sourceId}</td>
+                        <td data-label="Message Type" class="message-type">${source.messageTypeId}</td>
+                        <td data-label="Protocol">
+                            <span class="protocol-badge ${protocolClass}">${source.protocol}</span>
+                        </td>
+                        <td data-label="Frequency" class="frequency">${frequencyDisplay}</td>
+                        <td data-label="Time Since Last" class="time-since">${timeSinceDisplay}</td>
+                        <td data-label="Status">
+                            <div class="staleness-indicator">
+                                <div class="staleness-dot ${stalenessClass}"></div>
+                                <span class="staleness-text ${stalenessClass}">${stalenessText}</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Update a single source row
+        function updateSourceRow(source) {
+            const row = document.querySelector(`tr[data-source-id="${source.sourceId}"]`);
+            if (!row) return;
+
+            const stalenessClass = source.isStale ? 'stale' : 'fresh';
+            const stalenessText = source.isStale ? 'Stale' : 'Active';
+            const frequencyDisplay = source.frequency > 0 ? `${source.frequency.toFixed(2)} Hz` : '—';
+            const timeSinceDisplay = `${(source.timeSinceLast / 1000).toFixed(1)}s`;
+
+            // Update frequency
+            const freqCell = row.querySelector('.frequency');
+            if (freqCell) freqCell.textContent = frequencyDisplay;
+
+            // Update time since last
+            const timeCell = row.querySelector('.time-since');
+            if (timeCell) timeCell.textContent = timeSinceDisplay;
+
+            // Update staleness indicator
+            const stalenessIndicator = row.querySelector('.staleness-indicator');
+            if (stalenessIndicator) {
+                stalenessIndicator.innerHTML = `
+                    <div class="staleness-dot ${stalenessClass}"></div>
+                    <span class="staleness-text ${stalenessClass}">${stalenessText}</span>
+                `;
+            }
+        }
+
+        // Update summary cards
+        function updateSummary() {
+            const totalSources = Object.keys(sources).length;
+            const activeSources = Object.values(sources).filter(s => !s.isStale).length;
+            const staleSources = totalSources - activeSources;
+
+            const categories = new Set(Object.values(sources).map(s => s.category));
+            const activeCategories = categories.size;
+
+            document.getElementById('totalSources').textContent = totalSources;
+            document.getElementById('activeSources').textContent = activeSources;
+            document.getElementById('staleSources').textContent = staleSources;
+            document.getElementById('activeCategories').textContent = activeCategories;
+        }
+
+        // Toggle category visibility
+        function toggleCategory(category) {
+            const content = document.getElementById(`category-${category}`);
+            if (content) {
+                content.classList.toggle('active');
+            }
+        }
+
+        // Update connection status indicator
+        function updateConnectionStatus(text, connected) {
+            const indicator = document.getElementById('connectionIndicator');
+            const textElement = document.getElementById('connectionText');
+
+            textElement.textContent = text;
+            if (connected) {
+                indicator.classList.add('connected');
+            } else {
+                indicator.classList.remove('connected');
+            }
+        }
+
+        // Attempt to reconnect WebSocket
+        function attemptReconnect() {
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.error('Max reconnect attempts reached');
+                updateConnectionStatus('Failed to connect', false);
+                return;
+            }
+
+            reconnectAttempts++;
+            console.log(`Reconnecting... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            updateConnectionStatus(`Reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, false);
+
+            setTimeout(() => {
+                connectWebSocket();
+            }, RECONNECT_DELAY);
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

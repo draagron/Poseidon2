@@ -28,6 +28,7 @@
 #include <Arduino.h>
 #include "SourceStatistics.h"
 #include "utils/FrequencyCalculator.h"
+#include "utils/WebSocketLogger.h"
 #include "config.h"
 
 class SourceRegistry {
@@ -40,11 +41,13 @@ public:
      * Pre-populates categories with known message types from NMEA2000/0183.
      * No dynamic memory allocation.
      *
+     * @param logger Optional WebSocketLogger for diagnostic events
+     *
      * @post All 9 categories initialized
      * @post totalSources_ = 0
      * @post hasChanges_ = false
      */
-    void init();
+    void init(WebSocketLogger* logger = nullptr);
 
     // === Source Management ===
 
@@ -153,6 +156,7 @@ private:
     uint8_t totalSources_;          ///< Total active sources (invariant: ≤ MAX_SOURCES)
     bool hasChanges_;               ///< Dirty flag for WebSocket delta updates
     uint32_t lastGCTime_;           ///< millis() timestamp of last garbage collection
+    WebSocketLogger* logger_;       ///< Optional logger for diagnostic events
 
     // === Internal Methods ===
 
@@ -195,6 +199,14 @@ private:
      * @param talkerId Output: Talker ID (2 chars) or empty if NMEA2000
      */
     void parseSourceId(const char* sourceId, uint8_t& sid, char* talkerId);
+
+    /**
+     * @brief Get category name as string
+     *
+     * @param category Category type
+     * @return Category name (e.g., "GPS", "COMPASS")
+     */
+    const char* getCategoryName(CategoryType category) const;
 };
 
 #endif // SOURCE_REGISTRY_H

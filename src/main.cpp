@@ -224,6 +224,22 @@ void onWiFiConnected() {
                 String(F("{\"path\":\"/stream.html\",\"clientIP\":\"")) + clientIP + F("\"}"));
         });
 
+        // Setup /sources HTTP endpoint for source statistics dashboard (Feature 012: US2)
+        webServer->getServer()->on("/sources", HTTP_GET, [](AsyncWebServerRequest *request) {
+            if (!LittleFS.exists("/sources.html")) {
+                logger.broadcastLog(LogLevel::ERROR, "HTTPFileServer", "FILE_NOT_FOUND",
+                    F("{\"path\":\"/sources.html\"}"));
+                request->send(404, "text/plain", "Source statistics dashboard not found in LittleFS");
+                return;
+            }
+
+            request->send(LittleFS, "/sources.html", "text/html");
+
+            String clientIP = request->client()->remoteIP().toString();
+            logger.broadcastLog(LogLevel::DEBUG, "HTTPFileServer", "FILE_SERVED",
+                String(F("{\"path\":\"/sources.html\",\"clientIP\":\"")) + clientIP + F("\"}"));
+        });
+
         // Register log filter configuration endpoint
         webServer->getServer()->on("/log-filter", HTTP_POST, [](AsyncWebServerRequest *request) {
             bool updated = false;
@@ -268,6 +284,26 @@ void onWiFiConnected() {
         // Register GET endpoint to query current filter
         webServer->getServer()->on("/log-filter", HTTP_GET, [](AsyncWebServerRequest *request) {
             request->send(200, "application/json", logger.getFilterConfig());
+        });
+
+        // Register memory diagnostics endpoint (Feature 012: T036)
+        webServer->getServer()->on("/diagnostics", HTTP_GET, [](AsyncWebServerRequest *request) {
+            uint32_t freeHeap = ESP.getFreeHeap();
+            uint32_t totalHeap = ESP.getHeapSize();
+            uint32_t usedHeap = totalHeap - freeHeap;
+            uint8_t sourcesCount = sourceRegistry.getTotalSourceCount();
+
+            String response = String(F("{\"memory\":{\"freeHeap\":")) + freeHeap +
+                            F(",\"usedHeap\":") + usedHeap +
+                            F(",\"totalHeap\":") + totalHeap +
+                            F("},\"sources\":{\"count\":") + sourcesCount +
+                            F(",\"max\":") + MAX_SOURCES +
+                            F("}}");
+
+            request->send(200, "application/json", response);
+
+            logger.broadcastLog(LogLevel::DEBUG, "HTTPDiagnostics", "REQUEST",
+                String(F("{\"freeHeap\":")) + freeHeap + F(",\"sources\":") + sourcesCount + F("}"));
         });
 
         logger.broadcastLog(LogLevel::INFO, "WebServer", "STARTED",
@@ -642,9 +678,7 @@ void setup() {
 
     // Feature 012: Initialize source statistics tracking
     Serial.println(F("Initializing source statistics tracking..."));
-    sourceRegistry.init();
-    logger.broadcastLog(LogLevel::INFO, "SourceRegistry", "INITIALIZED",
-                        F("{\"maxSources\":50,\"messageTypes\":19}"));
+    sourceRegistry.init(&logger);
 
     // T030: Register NMEA2000 sources with BoatData prioritizer
     // Note: Currently only GPS and COMPASS sensor types are supported in SourcePrioritizer

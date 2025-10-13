@@ -5,6 +5,7 @@ Node.js WebSocket proxy server for ESP32 Poseidon2 BoatData streaming. Connects 
 ## Features
 
 - ✅ **WebSocket Proxy**: Relays data from ESP32 to multiple browsers
+- ✅ **Dual Endpoints**: BoatData streaming (`/boatdata`) + Source Statistics (`/source-stats`)
 - ✅ **Auto-Reconnect**: Automatically reconnects to ESP32 on disconnect (5s delay)
 - ✅ **Multi-Client**: Handles multiple browser connections simultaneously
 - ✅ **Connection Status**: Shows both proxy and ESP32 connection states
@@ -14,11 +15,15 @@ Node.js WebSocket proxy server for ESP32 Poseidon2 BoatData streaming. Connects 
 ## Architecture
 
 ```
-┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
-│   ESP32 Device  │ WS      │   Node.js Server │  WS     │  Browser Client │
-│  /boatdata      │◄────────│   (Proxy/Relay)  │────────►│   /stream       │
-│  ws://IP:80     │         │   http://IP:3000 │         │                 │
-└─────────────────┘         └──────────────────┘         └─────────────────┘
+┌─────────────────────────┐         ┌──────────────────┐         ┌─────────────────────┐
+│     ESP32 Device        │         │   Node.js Server │         │   Browser Clients   │
+│                         │  WS     │   (Proxy/Relay)  │  WS     │                     │
+│  /boatdata              │◄────────│                  │────────►│  /stream.html       │
+│  /source-stats          │◄────────│                  │────────►│  /sources.html      │
+│  ws://ESP_IP:80         │         │  http://IP:3030  │         │                     │
+└─────────────────────────┘         └──────────────────┘         └─────────────────────┘
+        1 connection                  Handles both endpoints           N connections
+        per endpoint                  Auto-reconnect enabled           Multi-client ready
 ```
 
 ## Quick Start
@@ -37,12 +42,13 @@ Edit `config.json`:
 ```json
 {
   "esp32": {
-    "ip": "192.168.1.100",    ← Change to your ESP32's IP address
+    "ip": "192.168.10.3",           ← Change to your ESP32's IP address
     "port": 80,
-    "wsPath": "/boatdata"
+    "wsPath": "/boatdata",
+    "sourceStatsPath": "/source-stats"
   },
   "server": {
-    "port": 3000,
+    "port": 3030,
     "reconnectInterval": 5000
   }
 }
@@ -57,11 +63,18 @@ npm start
 # Or: node server.js
 ```
 
-### 4. Open Dashboard
+### 4. Open Dashboards
 
 Open your browser to:
+
+**BoatData Dashboard:**
 ```
-http://localhost:3000/stream.html
+http://localhost:3030/stream.html
+```
+
+**Source Statistics Dashboard:**
+```
+http://localhost:3030/sources.html
 ```
 
 ## Configuration Options
@@ -74,13 +87,14 @@ http://localhost:3000/stream.html
 ```json
 {
   "esp32": {
-    "ip": "192.168.1.100",       // ESP32 IP address
-    "port": 80,                   // ESP32 HTTP port
-    "wsPath": "/boatdata"         // WebSocket endpoint path
+    "ip": "192.168.10.3",            // ESP32 IP address
+    "port": 80,                      // ESP32 HTTP port
+    "wsPath": "/boatdata",           // BoatData WebSocket endpoint
+    "sourceStatsPath": "/source-stats" // Source Stats WebSocket endpoint
   },
   "server": {
-    "port": 3000,                 // Node.js server port
-    "reconnectInterval": 5000     // Auto-reconnect delay (ms)
+    "port": 3030,                    // Node.js server port
+    "reconnectInterval": 5000        // Auto-reconnect delay (ms)
   }
 }
 ```
@@ -107,7 +121,15 @@ Serves the BoatData dashboard HTML page.
 
 **Example:**
 ```
-http://localhost:3000/stream.html
+http://localhost:3030/stream.html
+```
+
+### GET /sources.html
+Serves the Source Statistics dashboard HTML page.
+
+**Example:**
+```
+http://localhost:3030/sources.html
 ```
 
 ### GET /api/config
@@ -115,33 +137,54 @@ Returns current configuration and connection status (JSON).
 
 **Example:**
 ```bash
-curl http://localhost:3000/api/config
+curl http://localhost:3030/api/config
 ```
 
 **Response:**
 ```json
 {
   "esp32": {
-    "ip": "192.168.1.100",
+    "ip": "192.168.10.3",
     "port": 80,
-    "connected": true,
-    "lastMessageTime": "2025-10-13T12:34:56.789Z"
+    "boatdata": {
+      "connected": true,
+      "lastMessageTime": "2025-10-13T12:34:56.789Z",
+      "clients": 2
+    },
+    "sourceStats": {
+      "connected": true,
+      "lastMessageTime": "2025-10-13T12:35:01.234Z",
+      "clients": 3
+    }
   },
   "server": {
-    "port": 3000,
-    "connectedClients": 2,
+    "port": 3030,
+    "totalClients": 5,
     "uptime": 3600
   }
 }
 ```
 
 ### WebSocket /boatdata
-WebSocket endpoint for real-time data streaming.
+WebSocket endpoint for real-time BoatData streaming.
 
 **Browser connection:**
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/boatdata');
+const ws = new WebSocket('ws://localhost:3030/boatdata');
 ```
+
+### WebSocket /source-stats
+WebSocket endpoint for real-time source statistics streaming.
+
+**Browser connection:**
+```javascript
+const ws = new WebSocket('ws://localhost:3030/source-stats');
+```
+
+**Message Types:**
+- `fullSnapshot`: Complete state of all sources (sent on connect)
+- `deltaUpdate`: Incremental updates (frequency, staleness changes)
+- `sourceRemoved`: Source garbage collected or evicted
 
 ## Dashboard Features
 
@@ -156,7 +199,7 @@ const ws = new WebSocket('ws://localhost:3000/boatdata');
   - 🟢 Green = Connected (data flowing)
   - 🔴 Red = Disconnected (no data)
 
-### Sensor Data Cards
+### BoatData Dashboard - Sensor Data Cards
 
 9 sensor groups displayed:
 1. **GPS Navigation** - Lat/Lon, COG, SOG, Variation
@@ -168,6 +211,33 @@ const ws = new WebSocket('ws://localhost:3000/boatdata');
 7. **Saildrive Status** - Engaged/Retracted
 8. **Battery Banks** - Voltage, Current, SOC (A & B)
 9. **Shore Power** - Connection status, Power draw
+
+### Source Statistics Dashboard - Real-Time Source Monitoring
+
+**Purpose**: Monitor NMEA 2000/0183 message sources for diagnostic purposes.
+
+**Features:**
+- **Summary Cards**: Total, Active, Stale sources and active categories
+- **Category Organization**: Sources grouped by sensor type (GPS, Compass, Wind, etc.)
+- **Real-Time Updates**: Frequency (Hz) and time since last message
+- **Staleness Indicators**:
+  - 🟢 Green dot = Active (received within 5 seconds)
+  - 🔴 Red dot (pulsing) = Stale (no messages >5 seconds)
+- **Source Details**:
+  - Source ID (e.g., "NMEA2000-42" or "NMEA0183-AP")
+  - Message Type (e.g., "PGN129025" or "HDM")
+  - Protocol (NMEA2000 or NMEA0183)
+  - Frequency (Hz with 10-sample rolling average)
+  - Time Since Last message
+- **Mobile Responsive**: Optimized layout for phones and tablets
+- **Auto-Reconnect**: Graceful handling of connection failures
+
+**Use Cases:**
+1. **Diagnostic**: Identify which NMEA devices are active/inactive
+2. **Troubleshooting**: Detect stale sources (sensor disconnected/failed)
+3. **System Topology**: Understand which sensors are providing data
+4. **Frequency Validation**: Verify message update rates (1Hz, 10Hz, etc.)
+5. **Multi-Source Scenarios**: See all sources for same message type
 
 ### Auto-Reconnect
 
@@ -433,5 +503,5 @@ For issues or questions, check:
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.1.0 (Added Source Statistics support)
 **Last Updated**: 2025-10-13

@@ -34,7 +34,7 @@ void SourceStatsHandler::handleEvent(AsyncWebSocketClient* client, AwsEventType 
         case WS_EVT_CONNECT:
             if (logger_) {
                 logger_->broadcastLog(LogLevel::INFO, "SourceStatsHandler", "CLIENT_CONNECTED",
-                                     "{\"clientId\":" + String(client->id()) + "}");
+                                     String(F("{\"clientId\":")) + client->id() + F("}"));
             }
             // Send full snapshot to new client
             sendFullSnapshot(client);
@@ -43,14 +43,14 @@ void SourceStatsHandler::handleEvent(AsyncWebSocketClient* client, AwsEventType 
         case WS_EVT_DISCONNECT:
             if (logger_) {
                 logger_->broadcastLog(LogLevel::INFO, "SourceStatsHandler", "CLIENT_DISCONNECTED",
-                                     "{\"clientId\":" + String(client->id()) + "}");
+                                     String(F("{\"clientId\":")) + client->id() + F("}"));
             }
             break;
 
         case WS_EVT_ERROR:
             if (logger_) {
                 logger_->broadcastLog(LogLevel::ERROR, "SourceStatsHandler", "CLIENT_ERROR",
-                                     "{\"clientId\":" + String(client->id()) + "}");
+                                     String(F("{\"clientId\":")) + client->id() + F("}"));
             }
             break;
 
@@ -83,8 +83,8 @@ void SourceStatsHandler::sendFullSnapshot(AsyncWebSocketClient* client) {
 
     if (logger_) {
         logger_->broadcastLog(LogLevel::DEBUG, "SourceStatsHandler", "SNAPSHOT_SENT",
-                             "{\"clientId\":" + String(client->id()) +
-                             ",\"size\":" + String(json.length()) + "}");
+                             String(F("{\"clientId\":")) + client->id() +
+                             F(",\"size\":") + json.length() + F("}"));
     }
 }
 
@@ -107,8 +107,8 @@ void SourceStatsHandler::sendDeltaUpdate() {
 
     if (logger_) {
         logger_->broadcastLog(LogLevel::DEBUG, "SourceStatsHandler", "DELTA_SENT",
-                             "{\"size\":" + String(json.length()) +
-                             ",\"clients\":" + String(ws_->count()) + "}");
+                             String(F("{\"size\":")) + json.length() +
+                             F(",\"clients\":") + ws_->count() + F("}"));
     }
 }
 
@@ -127,7 +127,7 @@ void SourceStatsHandler::sendRemovalEvent(const char* sourceId, const char* reas
 
     if (logger_) {
         logger_->broadcastLog(LogLevel::INFO, "SourceStatsHandler", "REMOVAL_SENT",
-                             "{\"sourceId\":\"" + String(sourceId) +
-                             "\",\"reason\":\"" + String(reason) + "\"}");
+                             String(F("{\"sourceId\":\"")) + sourceId +
+                             F("\",\"reason\":\"") + reason + F("\"}"));
     }
 }

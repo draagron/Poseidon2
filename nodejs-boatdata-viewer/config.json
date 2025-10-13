@@ -2,7 +2,8 @@
   "esp32": {
     "ip": "192.168.10.3",
     "port": 80,
-    "wsPath": "/boatdata"
+    "wsPath": "/boatdata",
+    "sourceStatsPath": "/source-stats"
   },
   "server": {
     "port": 3030,

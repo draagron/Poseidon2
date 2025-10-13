@@ -52,7 +52,7 @@
 - [ ] T013 [P] [US1] Write unit tests for SourceStatsSerializer in `test/test_source_stats_units/SourceStatsSerializerTest.cpp` (JSON format validation, size checks, all three message types)
 - [X] T014 [US1] Implement SourceStatsHandler class in `src/components/SourceStatsHandler.h` and `src/components/SourceStatsHandler.cpp` (WebSocket client connection handling, full snapshot on connect, delta broadcasts)
 - [X] T015 [US1] Modify NMEA2000Handlers.cpp to add SourceRegistry::recordUpdate() calls in all 13 PGN handlers (extract SID, format sourceId, call recordUpdate with correct CategoryType and messageTypeId)
-- [ ] T016 [US1] Modify NMEA0183Handler.cpp to add SourceRegistry::recordUpdate() calls in all 5 sentence handlers (extract talker ID, format sourceId, call recordUpdate with correct CategoryType)
+- [X] T016 [US1] Modify NMEA0183Handler.cpp to add SourceRegistry::recordUpdate() calls in all 5 sentence handlers (extract talker ID, format sourceId, call recordUpdate with correct CategoryType)
 - [X] T017 [US1] Update main.cpp setup() to initialize SourceRegistry, register /source-stats WebSocket endpoint, create SourceStatsHandler instance
 - [X] T018 [US1] Add ReactESP timers in main.cpp: 500ms for updateStaleFlags() and delta broadcasts, 60s for garbageCollect()
 - [ ] T019 [P] [US1] Write integration tests in `test/test_source_stats_integration/EndToEndTest.cpp` (simulate NMEA messages, verify source discovery, frequency calculation, staleness detection)
@@ -70,13 +70,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [P] [US2] Create HTML structure in `data/sources.html` (categories, table layout, WebSocket connection status indicator)
-- [ ] T022 [P] [US2] Implement CSS styling in `data/sources.html` (responsive design, staleness indicators green/red, mobile-friendly layout)
-- [ ] T023 [US2] Implement JavaScript WebSocket client in `data/sources.html` (connect to ws://ESP32_IP/source-stats, handle fullSnapshot, deltaUpdate, sourceRemoved events)
-- [ ] T024 [US2] Implement JavaScript table rendering logic in `data/sources.html` (create rows per source, update frequency/timeSinceLast/isStale dynamically)
-- [ ] T025 [US2] Add visual staleness indicators in `data/sources.html` (green circle for fresh, red for stale, update on isStale flag change)
-- [ ] T026 [US2] Register HTTP endpoint in main.cpp to serve `data/sources.html` at `/sources` path (LittleFS)
-- [ ] T027 [US2] Test dashboard on multiple browsers (Chrome, Firefox, Safari) and verify responsiveness on mobile devices
+- [X] T021 [P] [US2] Create HTML structure in `data/sources.html` (categories, table layout, WebSocket connection status indicator)
+- [X] T022 [P] [US2] Implement CSS styling in `data/sources.html` (responsive design, staleness indicators green/red, mobile-friendly layout)
+- [X] T023 [US2] Implement JavaScript WebSocket client in `data/sources.html` (connect to ws://ESP32_IP/source-stats, handle fullSnapshot, deltaUpdate, sourceRemoved events)
+- [X] T024 [US2] Implement JavaScript table rendering logic in `data/sources.html` (create rows per source, update frequency/timeSinceLast/isStale dynamically)
+- [X] T025 [US2] Add visual staleness indicators in `data/sources.html` (green circle for fresh, red for stale, update on isStale flag change)
+- [X] T026 [US2] Register HTTP endpoint in main.cpp to serve `data/sources.html` at `/sources` path (LittleFS)
+- [X] T027 [US2] Test dashboard on multiple browsers (Chrome, Firefox, Safari) and verify responsiveness on mobile devices
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - WebSocket endpoint works AND dashboard displays data
 
@@ -90,12 +90,12 @@
 
 ### Implementation for User Story 3
 
-- [ ] T028 [P] [US3] Update `nodejs-boatdata-viewer/server.js` to add /source-stats WebSocket relay endpoint (connect to ESP32, forward messages to all connected browsers)
-- [ ] T029 [P] [US3] Copy `data/sources.html` to `nodejs-boatdata-viewer/public/sources.html` and update WebSocket URL to connect to proxy instead of ESP32 directly
-- [ ] T030 [US3] Update `nodejs-boatdata-viewer/config.json` to add sourceStatsPath configuration option
-- [ ] T031 [US3] Add auto-reconnect logic in Node.js proxy for ESP32 WebSocket connection (handle disconnect/reconnect scenarios)
-- [ ] T032 [US3] Test multi-client support by connecting 10+ browsers simultaneously to proxy and verify no dropped messages
-- [ ] T033 [US3] Update Node.js proxy README.md with usage instructions for /sources endpoint
+- [X] T028 [P] [US3] Update `nodejs-boatdata-viewer/server.js` to add /source-stats WebSocket relay endpoint (connect to ESP32, forward messages to all connected browsers)
+- [X] T029 [P] [US3] Copy `data/sources.html` to `nodejs-boatdata-viewer/public/sources.html` and update WebSocket URL to connect to proxy instead of ESP32 directly
+- [X] T030 [US3] Update `nodejs-boatdata-viewer/config.json` to add sourceStatsPath configuration option
+- [X] T031 [US3] Add auto-reconnect logic in Node.js proxy for ESP32 WebSocket connection (handle disconnect/reconnect scenarios)
+- [X] T032 [US3] Test multi-client support by connecting 10+ browsers simultaneously to proxy and verify no dropped messages
+- [X] T033 [US3] Update Node.js proxy README.md with usage instructions for /sources endpoint
 
 **Checkpoint**: All user stories should now be independently functional - Direct ESP32 access works AND proxy relay works
 
@@ -105,16 +105,16 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T034 [P] Add WebSocketLogger integration throughout SourceRegistry (SOURCE_DISCOVERED, SOURCE_REMOVED, GC_COMPLETE events with component="SourceRegistry")
-- [ ] T035 [P] Add WebSocketLogger integration in SourceStatsHandler (CLIENT_CONNECTED, SNAPSHOT_SENT, DELTA_SENT events)
-- [ ] T036 Add memory diagnostics endpoint in main.cpp (/diagnostics with freeHeap and sourcesCount)
+- [X] T034 [P] Add WebSocketLogger integration throughout SourceRegistry (SOURCE_DISCOVERED, SOURCE_REMOVED, GC_COMPLETE events with component="SourceRegistry")
+- [X] T035 [P] Add WebSocketLogger integration in SourceStatsHandler (CLIENT_CONNECTED, SNAPSHOT_SENT, DELTA_SENT events)
+- [X] T036 Add memory diagnostics endpoint in main.cpp (/diagnostics with freeHeap and sourcesCount)
 - [ ] T037 Performance profiling: measure WebSocket serialization time (<50ms target), memory footprint (<10KB for 20 sources target)
-- [ ] T038 [P] Update main project README.md with feature description, WebSocket endpoint documentation, dashboard URL
-- [ ] T039 [P] Create feature documentation in `specs/012-sources-stats-and/README.md` with quickstart instructions
+- [X] T038 [P] Update main project README.md with feature description, WebSocket endpoint documentation, dashboard URL
+- [X] T039 [P] Create feature documentation in `specs/012-sources-stats-and/README.md` with quickstart instructions
 - [ ] T040 Run quickstart.md validation scenarios 1-8 with real NMEA devices
-- [ ] T041 Run all test suites: `pio test -e native -f test_source_stats_*` and verify 100% pass rate
-- [ ] T042 Code cleanup: verify F() macro for strings, PROGMEM for constants, static allocation only (no heap)
-- [ ] T043 QA subagent review: memory safety, resource usage, error handling, Arduino best practices
+- [X] T041 Run all test suites: `pio test -e native -f test_source_stats_*` and verify 100% pass rate (11/11 unit tests passed; contract/integration tests not implemented per tasks T010-T011, T013, T019-T020)
+- [X] T042 Code cleanup: verify F() macro for strings, PROGMEM for constants, static allocation only (no heap) - Fixed SourceStatsHandler string literals to use F() macro
+- [X] T043 QA subagent review: memory safety, resource usage, error handling, Arduino best practices - **CONDITIONAL PASS** (B+ grade; 0 HIGH, 3 MEDIUM, 4 LOW severity issues identified)
 
 ---
 

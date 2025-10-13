@@ -50,7 +50,10 @@ static const MessageMapping MESSAGE_MAPPINGS[] = {
 
 static const int MESSAGE_MAPPING_COUNT = sizeof(MESSAGE_MAPPINGS) / sizeof(MessageMapping);
 
-void SourceRegistry::init() {
+void SourceRegistry::init(WebSocketLogger* logger) {
+    // Store logger reference
+    logger_ = logger;
+
     // Initialize all categories
     for (int i = 0; i < 9; i++) {
         categories_[i].init((CategoryType)i);
@@ -64,6 +67,12 @@ void SourceRegistry::init() {
     for (int i = 0; i < MESSAGE_MAPPING_COUNT; i++) {
         const MessageMapping& mapping = MESSAGE_MAPPINGS[i];
         getOrCreateMessageType(mapping.category, mapping.messageTypeId, mapping.protocol);
+    }
+
+    // Log initialization
+    if (logger_ != nullptr) {
+        logger_->broadcastLog(LogLevel::INFO, "SourceRegistry", "INITIALIZED",
+            String(F("{\"messageTypes\":")) + MESSAGE_MAPPING_COUNT + F("}"));
     }
 }
 
@@ -117,6 +126,16 @@ bool SourceRegistry::recordUpdate(CategoryType category, const char* messageType
 
         msgType->sourceCount++;
         totalSources_++;
+
+        // Log source discovery
+        if (logger_ != nullptr) {
+            // Get category name
+            const char* catName = getCategoryName(category);
+            String data = String(F("{\"sourceId\":\"")) + sourceId + F("\",\"category\":\"") +
+                         catName + F("\",\"messageType\":\"") + messageTypeId +
+                         F("\",\"totalSources\":") + totalSources_ + F("}");
+            logger_->broadcastLog(LogLevel::INFO, "SourceRegistry", "SOURCE_DISCOVERED", data);
+        }
     }
 
     // Update timestamp
@@ -181,7 +200,10 @@ void SourceRegistry::updateStaleFlags() {
 
 void SourceRegistry::garbageCollect() {
     uint32_t now = millis();
+    uint32_t startMicros = micros();
     lastGCTime_ = now;
+    uint8_t removedCount = 0;
+    uint8_t sourcesBeforeGC = totalSources_;
 
     // Iterate all categories
     for (uint8_t catIdx = 0; catIdx < 9; catIdx++) {
@@ -200,6 +222,16 @@ void SourceRegistry::garbageCollect() {
                 // Check if source is stale beyond GC threshold
                 uint32_t timeSinceLast = now - source.lastUpdateTime;
                 if (timeSinceLast > SOURCE_GC_THRESHOLD_MS) {
+                    // Log removal (individual event)
+                    if (logger_ != nullptr) {
+                        const char* catName = getCategoryName((CategoryType)catIdx);
+                        String data = String(F("{\"sourceId\":\"")) + source.sourceId +
+                                     F("\",\"category\":\"") + catName +
+                                     F("\",\"timeSinceLast\":") + timeSinceLast +
+                                     F(",\"reason\":\"GC\"}");
+                        logger_->broadcastLog(LogLevel::DEBUG, "SourceRegistry", "SOURCE_REMOVED", data);
+                    }
+
                     // Remove this source
                     source.active = false;
 
@@ -210,10 +242,21 @@ void SourceRegistry::garbageCollect() {
 
                     msgType.sourceCount--;
                     totalSources_--;
+                    removedCount++;
                     hasChanges_ = true;
                 }
             }
         }
+    }
+
+    // Log GC completion
+    if (logger_ != nullptr) {
+        uint32_t durationMicros = micros() - startMicros;
+        String data = String(F("{\"removed\":")) + removedCount +
+                     F(",\"remaining\":") + totalSources_ +
+                     F(",\"duration_us\":") + durationMicros + F("}");
+        LogLevel level = (removedCount > 0) ? LogLevel::INFO : LogLevel::DEBUG;
+        logger_->broadcastLog(level, "SourceRegistry", "GC_COMPLETE", data);
     }
 }
 
@@ -261,6 +304,17 @@ bool SourceRegistry::removeSource(const char* sourceId) {
                 MessageSource& source = msgType.sources[srcIdx];
 
                 if (strcmp(source.sourceId, sourceId) == 0) {
+                    // Log removal before removing
+                    if (logger_ != nullptr) {
+                        const char* catName = getCategoryName((CategoryType)catIdx);
+                        uint32_t timeSinceLast = millis() - source.lastUpdateTime;
+                        String data = String(F("{\"sourceId\":\"")) + sourceId +
+                                     F("\",\"category\":\"") + catName +
+                                     F("\",\"timeSinceLast\":") + timeSinceLast +
+                                     F(",\"totalSources\":") + (totalSources_ - 1) + F("}");
+                        logger_->broadcastLog(LogLevel::INFO, "SourceRegistry", "SOURCE_REMOVED", data);
+                    }
+
                     // Mark inactive
                     source.active = false;
 
@@ -360,5 +414,20 @@ void SourceRegistry::parseSourceId(const char* sourceId, uint8_t& sid, char* tal
         // Unknown format
         sid = 255;
         talkerId[0] = '\0';
+    }
+}
+
+const char* SourceRegistry::getCategoryName(CategoryType category) const {
+    switch (category) {
+        case CategoryType::GPS: return "GPS";
+        case CategoryType::COMPASS: return "COMPASS";
+        case CategoryType::WIND: return "WIND";
+        case CategoryType::DST: return "DST";
+        case CategoryType::RUDDER: return "RUDDER";
+        case CategoryType::ENGINE: return "ENGINE";
+        case CategoryType::SAILDRIVE: return "SAILDRIVE";
+        case CategoryType::BATTERY: return "BATTERY";
+        case CategoryType::SHORE_POWER: return "SHORE_POWER";
+        default: return "UNKNOWN";
     }
 }
