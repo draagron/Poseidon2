@@ -30,7 +30,8 @@
  */
 void test_calculate_10hz_source() {
     uint32_t buffer[10] = {1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900};
-    double freq = FrequencyCalculator::calculate(buffer, 10);
+    uint8_t bufferIndex = 0;  // Next write position (would wrap to 0)
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
 
     // Verify frequency is within ±10% tolerance
     TEST_ASSERT_FLOAT_WITHIN(1.0, 10.0, freq);  // 10.0 ± 1.0
@@ -44,7 +45,8 @@ void test_calculate_10hz_source() {
  */
 void test_calculate_1hz_source() {
     uint32_t buffer[10] = {1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
-    double freq = FrequencyCalculator::calculate(buffer, 10);
+    uint8_t bufferIndex = 0;
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
 
     TEST_ASSERT_FLOAT_WITHIN(0.1, 1.0, freq);  // 1.0 ± 0.1
 }
@@ -57,7 +59,8 @@ void test_calculate_1hz_source() {
  */
 void test_calculate_insufficient_samples() {
     uint32_t buffer[10] = {1000};
-    double freq = FrequencyCalculator::calculate(buffer, 1);
+    uint8_t bufferIndex = 1;  // After 1 insert
+    double freq = FrequencyCalculator::calculate(buffer, 1, bufferIndex);
 
     TEST_ASSERT_EQUAL_FLOAT(0.0, freq);
 }
@@ -70,7 +73,8 @@ void test_calculate_insufficient_samples() {
  */
 void test_calculate_two_samples() {
     uint32_t buffer[10] = {1000, 1100};
-    double freq = FrequencyCalculator::calculate(buffer, 2);
+    uint8_t bufferIndex = 2;  // After 2 inserts
+    double freq = FrequencyCalculator::calculate(buffer, 2, bufferIndex);
 
     TEST_ASSERT_FLOAT_WITHIN(0.1, 10.0, freq);
 }
@@ -83,7 +87,8 @@ void test_calculate_two_samples() {
  */
 void test_calculate_zero_interval() {
     uint32_t buffer[10] = {1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
-    double freq = FrequencyCalculator::calculate(buffer, 10);
+    uint8_t bufferIndex = 0;
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
 
     TEST_ASSERT_EQUAL_FLOAT(0.0, freq);
 }
@@ -96,7 +101,8 @@ void test_calculate_zero_interval() {
  */
 void test_calculate_variable_frequency() {
     uint32_t buffer[10] = {1000, 1080, 1200, 1280, 1400, 1480, 1600, 1680, 1800, 1880};
-    double freq = FrequencyCalculator::calculate(buffer, 10);
+    uint8_t bufferIndex = 0;
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
 
     // Total interval: 1880 - 1000 = 880ms
     // Avg interval: 880 / 9 = 97.78ms
@@ -166,6 +172,32 @@ void test_addTimestamp_circular_overwrites() {
 }
 
 /**
+ * @brief Test circular buffer wrap-around maintains correct frequency
+ *
+ * Scenario: 10Hz source, buffer has wrapped (index=3), newest at index=2
+ * Buffer: [t11, t12, t13, t4, t5, t6, t7, t8, t9, t10]
+ *         index=3 (next write), newest at index=2 (t13), oldest at index=3 (t4)
+ * Expected: 10.0 Hz (100ms intervals) - proves fix for GitHub issue
+ */
+void test_calculate_circular_wrapped_buffer() {
+    // Simulate a wrapped circular buffer (index=3)
+    // Original buffer filled: [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10]
+    // After 3 more messages: [t11, t12, t13, t4, t5, t6, t7, t8, t9, t10]
+    uint32_t buffer[10] = {
+        10100, 10200, 10300,  // t11, t12, t13 (newest at index 2)
+        9400, 9500, 9600, 9700, 9800, 9900, 10000  // t4-t10 (oldest at index 3)
+    };
+    uint8_t bufferIndex = 3;  // Next write will overwrite t4 (oldest)
+
+    // Calculate: newest=buffer[2]=10300, oldest=buffer[3]=9400
+    // Interval: 10300 - 9400 = 900ms across 9 steps
+    // Avg: 900/9 = 100ms, Freq: 1000/100 = 10Hz
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
+
+    TEST_ASSERT_FLOAT_WITHIN(1.0, 10.0, freq);  // 10.0 ± 1.0
+}
+
+/**
  * @brief Test edge case: millis() rollover simulation
  *
  * Note: millis() rolls over at 49.7 days (UINT32_MAX ms).
@@ -179,10 +211,11 @@ void test_calculate_rollover_simulation() {
         0x00000032, 0x00000096, 0x000000FA, 0x0000015E,  // After rollover
         0x000001C2, 0x00000226
     };
+    uint8_t bufferIndex = 0;
 
     // This will calculate incorrect frequency due to wraparound
     // (last - first = 0x226 - 0xFFFFFF00 = huge negative, wraps to huge positive)
-    double freq = FrequencyCalculator::calculate(buffer, 10);
+    double freq = FrequencyCalculator::calculate(buffer, 10, bufferIndex);
 
     // Just verify no crash or NaN - frequency will be wrong but will self-correct
     // after buffer fills with post-rollover timestamps
@@ -208,6 +241,7 @@ extern "C" void run_frequency_calculator_tests() {
     RUN_TEST(test_addTimestamp_inserts_value);
     RUN_TEST(test_addTimestamp_wraps_at_10);
     RUN_TEST(test_addTimestamp_circular_overwrites);
+    RUN_TEST(test_calculate_circular_wrapped_buffer);
 
     // Edge cases
     RUN_TEST(test_calculate_rollover_simulation);

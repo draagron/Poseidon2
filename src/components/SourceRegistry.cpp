@@ -130,7 +130,7 @@ bool SourceRegistry::recordUpdate(CategoryType category, const char* messageType
 
     // Calculate frequency if buffer is full
     if (source->bufferFull) {
-        source->frequency = FrequencyCalculator::calculate(source->timestampBuffer, 10);
+        source->frequency = FrequencyCalculator::calculate(source->timestampBuffer, 10, source->bufferIndex);
     }
 
     // Mark as fresh (not stale)

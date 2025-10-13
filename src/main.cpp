@@ -626,16 +626,13 @@ void setup() {
     nmea2000->EnableForward(false);
 
     // Open CAN bus
-    if (nmea2000->Open()) {
-        Serial.println(F("NMEA2000 CAN bus initialized successfully"));
-        logger.broadcastLog(LogLevel::INFO, "NMEA2000", "INIT_SUCCESS",
-                            F("{\"can_tx\":32,\"can_rx\":34,\"baud\":250000}"));
-    } else {
-        Serial.println(F("WARNING: NMEA2000 CAN bus initialization failed"));
-        logger.broadcastLog(LogLevel::ERROR, "NMEA2000", "INIT_FAILED",
-                            F("{\"reason\":\"CAN bus open failed - check wiring and terminators\"}"));
-        // Graceful degradation: Continue operation without NMEA2000
-    }
+    // Note: Open() return value is unreliable in NMEA2000 library (known bug)
+    // Address claiming happens asynchronously via ParseMessages()
+    // See: https://ttlappalainen.github.io/NMEA2000/changes.html
+    nmea2000->Open();
+    Serial.println(F("NMEA2000 CAN bus initialized"));
+    logger.broadcastLog(LogLevel::INFO, "NMEA2000", "INIT_STARTED",
+                        F("{\"can_tx\":32,\"can_rx\":34,\"baud\":250000}"));
 
     // T029: Register NMEA2000 message handlers
     if (nmea2000 != nullptr) {

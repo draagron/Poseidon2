@@ -27,28 +27,32 @@ public:
     /**
      * @brief Calculate update frequency from circular timestamp buffer
      *
-     * Computes rolling average based on first and last timestamp in buffer.
-     * Formula: frequency (Hz) = 1000 / ((last_timestamp - first_timestamp) / (count - 1))
+     * Computes rolling average based on oldest and newest timestamps in circular buffer.
+     * Formula: frequency (Hz) = 1000 / ((newest_timestamp - oldest_timestamp) / (count - 1))
      *
      * @param buffer Circular buffer of millis() timestamps (must contain ≥2 samples)
      * @param count Number of valid timestamps in buffer (2-10)
+     * @param bufferIndex Current write position in circular buffer (0-9)
      *
      * @return Frequency in Hz (0.0 if invalid input)
      *
      * @pre count >= 2 (otherwise frequency undefined)
      * @pre count <= 10 (buffer size limit)
-     * @pre buffer[0..count-1] contain valid millis() timestamps
+     * @pre buffer[0..9] contain valid millis() timestamps
+     * @pre bufferIndex in range [0, 9]
      *
      * @note Stateless function - can be called with any buffer
      * @note Handles millis() rollover gracefully (incorrect for one cycle, self-corrects)
      * @note Returns 0.0 if count < 2 or average interval is 0
+     * @note Correctly handles circular buffer wrap-around using bufferIndex
      *
      * @example
-     * uint32_t buffer[10] = {1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900};
-     * double freq = FrequencyCalculator::calculate(buffer, 10);
-     * // freq = 1000 / ((1900 - 1000) / 9) = 1000 / 100 = 10.0 Hz
+     * // Linear buffer (before wrap): [t1, t2, ..., t10], index=0
+     * // Oldest at (0-1+10)%10=9, newest at (0+10-1)%10=9 → use linear logic
+     * // Wrapped buffer: [t11, t2, t3, ..., t10], index=1
+     * // Oldest at index=1 (t2), newest at index=0 (t11)
      */
-    static double calculate(const uint32_t* buffer, uint8_t count);
+    static double calculate(const uint32_t* buffer, uint8_t count, uint8_t bufferIndex);
 
     /**
      * @brief Add timestamp to circular buffer
